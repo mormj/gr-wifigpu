@@ -1,6 +1,6 @@
 id: wifigpu_presync
 label: presync
-category: '[Wifigpu]'
+category: '[WIFIGPU]'
 templates:
   imports: import wifigpu
   make: wifigpu.presync()
@@ -12,5 +12,10 @@ outputs:
 - label: out
   domain: stream
   dtype: complex
-  multiplicity: '3'
+- label: abs
+  domain: stream
+  dtype: complex
+- label: cor
+  domain: stream
+  dtype: float
 file_format: 1

@@ -24,29 +24,36 @@
 #include <wifigpu/sync_short.h>
 
 namespace gr {
-  namespace wifigpu {
+namespace wifigpu {
 
-    class sync_short_impl : public sync_short
-    {
-     private:
-      // Nothing to declare in this block.
+class sync_short_impl : public sync_short {
+private:
+  float d_threshold;
+  int d_min_plateau;
+  uint64_t d_last_tag_location = 0;
+  float d_freq_offset;
 
-     public:
-      sync_short_impl();
-      ~sync_short_impl();
+  std::vector<uint8_t> above_threshold;
+  std::vector<uint8_t> accum;
 
-      // Where all the action really happens
-      void forecast (int noutput_items, gr_vector_int &ninput_items_required);
+  static const int MIN_GAP = 480;
+  static const int MAX_SAMPLES = 540 * 80;
 
-      int general_work(int noutput_items,
-           gr_vector_int &ninput_items,
-           gr_vector_const_void_star &input_items,
-           gr_vector_void_star &output_items);
+public:
+  sync_short_impl(float threshold, int min_plateau);
+  ~sync_short_impl();
 
-    };
+  void insert_tag(uint64_t item, double freq_offset, uint64_t input_item);
 
-  } // namespace wifigpu
+  // Where all the action really happens
+  void forecast(int noutput_items, gr_vector_int &ninput_items_required);
+
+  int general_work(int noutput_items, gr_vector_int &ninput_items,
+                   gr_vector_const_void_star &input_items,
+                   gr_vector_void_star &output_items);
+};
+
+} // namespace wifigpu
 } // namespace gr
 
 #endif /* INCLUDED_WIFIGPU_SYNC_SHORT_IMPL_H */
-

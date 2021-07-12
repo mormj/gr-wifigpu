@@ -25,9 +25,15 @@
 #include "presync_impl.h"
 #include <gnuradio/io_signature.h>
 
-extern void exec_sync(cuFloatComplex *in, cuFloatComplex *out, float *cor,
-                      int n, int grid_size, int block_size,
-                      cudaStream_t stream);
+#include <pmt/pmt.h>
+
+void exec_mov_avg(cuFloatComplex *in, float *mag, cuFloatComplex *out,
+                  float *cor, int n, int grid_size, int block_size,
+                  cudaStream_t stream);
+
+void exec_corr_abs(cuFloatComplex *in, cuFloatComplex *out, float *mag, int n,
+                   int grid_size, int block_size, cudaStream_t stream);
+
 extern void get_block_and_grid(int *minGrid, int *minBlock);
 
 namespace gr {
@@ -42,7 +48,8 @@ presync::sptr presync::make() {
  */
 presync_impl::presync_impl()
     : gr::block("presync", gr::io_signature::make(1, 1, sizeof(gr_complex)),
-                gr::io_signature::make(3, 3, sizeof(gr_complex))) {
+                gr::io_signature::make3(3, 3, sizeof(gr_complex),
+                                        sizeof(gr_complex), sizeof(float))) {
   set_history(64);
 
   get_block_and_grid(&d_min_grid_size, &d_block_size);
@@ -53,10 +60,31 @@ presync_impl::presync_impl()
   cudaStreamCreate(&d_stream);
 
   // Temporary Buffers
-  checkCudaErrors(cudaMalloc((void **)&d_dev_in, d_max_out_buffer));
-  checkCudaErrors(cudaMalloc((void **)&d_dev_out, d_max_out_buffer));
-  checkCudaErrors(cudaMalloc((void **)&d_dev_abs, d_max_out_buffer));
-  checkCudaErrors(cudaMalloc((void **)&d_dev_cor, d_max_out_buffer));
+  checkCudaErrors(cudaMalloc(
+      (void **)&d_dev_in, d_max_out_buffer + (64 + 16) * sizeof(gr_complex)));
+  checkCudaErrors(cudaMalloc(
+      (void **)&d_dev_out, d_max_out_buffer + (64 + 16) * sizeof(gr_complex)));
+  checkCudaErrors(cudaMalloc(
+      (void **)&d_dev_abs, d_max_out_buffer + (64 + 16) * sizeof(gr_complex)));
+  checkCudaErrors(cudaMalloc((void **)&d_dev_cor,
+                             d_max_out_buffer + (64 + 16) * sizeof(float)));
+  checkCudaErrors(cudaMalloc(
+      (void **)&d_dev_abs2, d_max_out_buffer + (64 + 16) * sizeof(gr_complex)));
+  checkCudaErrors(cudaMalloc((void **)&d_dev_cor2,
+                             d_max_out_buffer + (64 + 16) * sizeof(float)));
+
+  checkCudaErrors(cudaMemset(
+      d_dev_in, 0, d_max_out_buffer + (64 + 16) * sizeof(gr_complex)));
+  checkCudaErrors(cudaMemset(
+      d_dev_out, 0, d_max_out_buffer + (64 + 16) * sizeof(gr_complex)));
+  checkCudaErrors(cudaMemset(
+      d_dev_abs, 0, d_max_out_buffer + (64 + 16) * sizeof(gr_complex)));
+  checkCudaErrors(
+      cudaMemset(d_dev_cor, 0, d_max_out_buffer + (64 + 16) * sizeof(float)));
+  checkCudaErrors(cudaMemset(
+      d_dev_abs2, 0, d_max_out_buffer + (64 + 16) * sizeof(gr_complex)));
+  checkCudaErrors(
+      cudaMemset(d_dev_cor2, 0, d_max_out_buffer + (64 + 16) * sizeof(float)));
 }
 
 /*
@@ -77,23 +105,35 @@ int presync_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
   gr_complex *abs = (gr_complex *)output_items[1];
   float *cor = (float *)output_items[2];
 
-  checkCudaErrors(cudaMemcpyAsync(d_dev_in, in + 48,
-                                  sizeof(gr_complex) * noutput_items,
-                                  cudaMemcpyHostToDevice, d_stream));                            
+  // std::cout << noutput_items << std::endl;
 
-  exec_sync((cuFloatComplex *)d_dev_in, (cuFloatComplex *)d_dev_abs, d_dev_cor,
-            noutput_items, d_min_grid_size, d_block_size, d_stream);
+  checkCudaErrors(cudaMemcpyAsync(
+      d_dev_in, in, sizeof(gr_complex) * (noutput_items + 63),
+      cudaMemcpyHostToDevice, d_stream));
+
+  exec_corr_abs((cuFloatComplex *)d_dev_in, (cuFloatComplex *)d_dev_abs,
+                d_dev_cor, noutput_items, d_min_grid_size, d_block_size,
+                d_stream);
+
+  exec_mov_avg((cuFloatComplex *)d_dev_abs, d_dev_cor, (cuFloatComplex *)d_dev_abs2, d_dev_cor2, noutput_items,
+               d_min_grid_size, d_block_size, d_stream);
 
 
-  checkCudaErrors(cudaMemcpyAsync(abs, d_dev_abs,
+  checkCudaErrors(cudaMemcpyAsync(abs, d_dev_abs2,
                                   sizeof(gr_complex) * noutput_items,
                                   cudaMemcpyDeviceToHost, d_stream));
 
-  checkCudaErrors(cudaMemcpyAsync(cor, d_dev_cor,
-                                  sizeof(float) * noutput_items,
+  checkCudaErrors(cudaMemcpyAsync(cor, d_dev_cor2, sizeof(float) * noutput_items,
                                   cudaMemcpyDeviceToHost, d_stream));
 
-  memcpy(out, in+63, noutput_items*sizeof(gr_complex));
+  // memcpy(out, in + 16, noutput_items * sizeof(gr_complex));
+  checkCudaErrors(cudaMemcpyAsync(out, d_dev_in,
+                                  sizeof(gr_complex) * noutput_items,
+                                  cudaMemcpyDeviceToHost, d_stream));
+
+  cudaStreamSynchronize(d_stream);
+
+  // add_item_tag(1, nitems_written(0), pmt::mp("frame"), pmt::from_long(0));
 
   // Tell runtime system how many input items we consumed on
   // each input stream.

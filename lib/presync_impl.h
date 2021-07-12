@@ -42,6 +42,8 @@ private:
   cuFloatComplex* d_dev_out;
   cuFloatComplex* d_dev_abs;
   float* d_dev_cor;
+  cuFloatComplex* d_dev_abs2;
+  float* d_dev_cor2;
 
 public:
   presync_impl();
