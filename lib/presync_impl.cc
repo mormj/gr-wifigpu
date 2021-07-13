@@ -126,10 +126,10 @@ int presync_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
   checkCudaErrors(cudaMemcpyAsync(cor, d_dev_cor2, sizeof(float) * noutput_items,
                                   cudaMemcpyDeviceToHost, d_stream));
 
-  // memcpy(out, in + 16, noutput_items * sizeof(gr_complex));
-  checkCudaErrors(cudaMemcpyAsync(out, d_dev_in,
-                                  sizeof(gr_complex) * noutput_items,
-                                  cudaMemcpyDeviceToHost, d_stream));
+  memcpy(out, in + 47, noutput_items * sizeof(gr_complex));
+  // checkCudaErrors(cudaMemcpyAsync(out, d_dev_in,
+  //                                 sizeof(gr_complex) * noutput_items,
+  //                                 cudaMemcpyDeviceToHost, d_stream));
 
   cudaStreamSynchronize(d_stream);
 

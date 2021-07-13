@@ -23,6 +23,11 @@
 
 #include <wifigpu/sync_short.h>
 
+#include <cuda.h>
+#include <cuda_runtime_api.h>
+#include <cuComplex.h>
+#include <helper_cuda.h>
+
 namespace gr {
 namespace wifigpu {
 
@@ -33,11 +38,19 @@ private:
   uint64_t d_last_tag_location = 0;
   float d_freq_offset;
 
+  cuFloatComplex* d_dev_in;
+  cuFloatComplex* d_dev_out;
+  cudaStream_t d_stream;
+  int d_min_grid_size;
+  int d_block_size;
+
   std::vector<uint8_t> above_threshold;
   std::vector<uint8_t> accum;
 
   static const int MIN_GAP = 480;
   static const int MAX_SAMPLES = 540 * 80;
+
+  static const int d_max_out_buffer = 65536;  // max bytes for output buffer
 
 public:
   sync_short_impl(float threshold, int min_plateau);

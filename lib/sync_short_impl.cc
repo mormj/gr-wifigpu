@@ -25,6 +25,11 @@
 #include "sync_short_impl.h"
 #include <gnuradio/io_signature.h>
 
+extern void exec_freq_correction(cuFloatComplex *in, cuFloatComplex *out, float freq_offset,
+                          float start_idx, int n, int grid_size, int block_size,
+                          cudaStream_t stream);
+extern void get_block_and_grid_freq_correction(int *minGrid, int *minBlock);
+
 namespace gr {
 namespace wifigpu {
 
@@ -40,9 +45,26 @@ sync_short_impl::sync_short_impl(float threshold, int min_plateau)
     : gr::block("sync_short",
                 gr::io_signature::make3(3, 3, sizeof(gr_complex),
                                         sizeof(gr_complex), sizeof(float)),
-                gr::io_signature::make3(1, 3, sizeof(gr_complex), sizeof(uint8_t), sizeof(uint8_t))),
+                gr::io_signature::make3(1, 3, sizeof(gr_complex),
+                                        sizeof(uint8_t), sizeof(uint8_t))),
       d_threshold(threshold), d_min_plateau(min_plateau) {
   set_history(d_min_plateau);
+
+  above_threshold.resize(8192);
+  accum.resize(8192);
+
+  // Temporary Buffers
+  checkCudaErrors(cudaMalloc(
+      (void **)&d_dev_in, d_max_out_buffer + (64 + 16) * sizeof(gr_complex)));
+  checkCudaErrors(cudaMalloc(
+      (void **)&d_dev_out, d_max_out_buffer + (64 + 16) * sizeof(gr_complex)));
+
+  get_block_and_grid_freq_correction(&d_min_grid_size, &d_block_size);
+  cudaDeviceSynchronize();
+  std::cerr << "minGrid: " << d_min_grid_size << ", blockSize: " << d_block_size
+            << std::endl;
+
+  cudaStreamCreate(&d_stream);    
 }
 
 /*
@@ -53,9 +75,6 @@ sync_short_impl::~sync_short_impl() {}
 void sync_short_impl::forecast(int noutput_items,
                                gr_vector_int &ninput_items_required) {
   ninput_items_required[0] = noutput_items;
-
-  above_threshold.resize(8192);
-  accum.resize(8192);
 }
 
 int sync_short_impl::general_work(int noutput_items,
@@ -107,9 +126,24 @@ int sync_short_impl::general_work(int noutput_items,
     }
   }
 
-  for (int o = 0; o < noutput_items; o++) {
-    out[o] = in[o+h] * exp(gr_complex(0, -d_freq_offset * (nwritten+o)));
-  }
+  checkCudaErrors(cudaMemcpyAsync(d_dev_in, in + h,
+                                  sizeof(gr_complex) * (noutput_items),
+                                  cudaMemcpyHostToDevice, d_stream));
+
+  // for (int o = 0; o < noutput_items; o++) {
+  //   out[o] = in[o + h] * exp(gr_complex(0, -d_freq_offset * (nwritten + o)));
+  // }
+
+  exec_freq_correction(d_dev_in, d_dev_out, d_freq_offset,
+                          nwritten, noutput_items, d_min_grid_size, d_block_size,
+                          d_stream);
+
+  checkCudaErrors(cudaMemcpyAsync(out, d_dev_out,
+                                  sizeof(gr_complex) * (noutput_items),
+                                  cudaMemcpyDeviceToHost, d_stream));
+
+  cudaStreamSynchronize(d_stream);
+
 
   // memcpy(out_plateau, above_threshold.data(), noutput_items);
   // memcpy(out_accum, accum.data(), noutput_items);
@@ -122,7 +156,8 @@ int sync_short_impl::general_work(int noutput_items,
   return noutput_items;
 }
 
-void sync_short_impl::insert_tag(uint64_t item, double freq_offset, uint64_t input_item) {
+void sync_short_impl::insert_tag(uint64_t item, double freq_offset,
+                                 uint64_t input_item) {
   // mylog(boost::format("frame start at in: %2% out: %1%") % item %
   // input_item);
 

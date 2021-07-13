@@ -30,6 +30,7 @@ include(GrPlatform) #define LIB_SUFFIX
 find_package(CUDA REQUIRED)
 add_library(gnuradio-wifigpu-cu STATIC 
 presync.cu
+freq_correction.cu
 )
 set_target_properties(gnuradio-wifigpu-cu PROPERTIES POSITION_INDEPENDENT_CODE ON)
 set_target_properties(gnuradio-wifigpu-cu PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
