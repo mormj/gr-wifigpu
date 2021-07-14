@@ -190,7 +190,7 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
           memcpy(out + nproduced, in + (offset - nread + max_index - 160 + 32 + 1),
                  sizeof(gr_complex) * 128);
 
-          const pmt::pmt_t key = pmt::string_to_symbol("long");
+          const pmt::pmt_t key = pmt::string_to_symbol("wifi_start");
           const pmt::pmt_t value = pmt::from_long(max_index);
           const pmt::pmt_t srcid = pmt::string_to_symbol(name());
           // add_item_tag(0, nwritten+nproduced+max_index, key, value, srcid);

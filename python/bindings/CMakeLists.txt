@@ -29,6 +29,9 @@ include(GrPybind)
 ########################################################################
 
 list(APPEND wifigpu_python_files
+    presync_python.cc
+    sync_short_python.cc
+    sync_long_python.cc
     python_bindings.cc)
 
 GR_PYBIND_MAKE_OOT(wifigpu 

@@ -35,7 +35,7 @@ namespace gr {
     class WIFIGPU_API sync_long : virtual public gr::block
     {
      public:
-      typedef boost::shared_ptr<sync_long> sptr;
+      typedef std::shared_ptr<sync_long> sptr;
 
       /*!
        * \brief Return a shared_ptr to a new instance of wifigpu::sync_long.
