@@ -31,16 +31,16 @@ find_package(CUDA REQUIRED)
 add_library(gnuradio-wifigpu-cu STATIC 
 presync.cu
 freq_correction.cu
+multiply.cu
 )
 set_target_properties(gnuradio-wifigpu-cu PROPERTIES POSITION_INDEPENDENT_CODE ON)
 set_target_properties(gnuradio-wifigpu-cu PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 target_compile_options(gnuradio-wifigpu-cu PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-gencode arch=compute_75,code=sm_75>)
 target_compile_options(gnuradio-wifigpu-cu PRIVATE --default-stream per-thread)
-
 list(APPEND wifigpu_sources
     sync_short_impl.cc
     presync_impl.cc
-)
+    sync_long_impl.cc )
 
 set(wifigpu_sources "${wifigpu_sources}" PARENT_SCOPE)
 if(NOT wifigpu_sources)

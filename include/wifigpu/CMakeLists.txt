@@ -24,5 +24,6 @@
 install(FILES
     api.h
     sync_short.h
-    presync.h DESTINATION include/wifigpu
+    presync.h
+    sync_long.h DESTINATION include/wifigpu
 )
