@@ -17,12 +17,15 @@ if (CUDA_FOUND)
     set(CUDA_BLOCK_SOURCES
         presync_impl.cc
         sync_short_impl.cc
-        sync_long_impl.cc)
+        sync_long_impl.cc
+        frame_equalizer_impl.cc)
 
     add_library(gnuradio-wifigpu-cu STATIC 
         freq_correction.cu
         multiply.cu
+        multiply_const.cu
         presync.cu
+        frame_equalizer.cu
         )
     set_target_properties(gnuradio-wifigpu-cu PROPERTIES 
         POSITION_INDEPENDENT_CODE ON
@@ -65,7 +68,6 @@ list(APPEND wifigpu_sources
     equalizer/sta.cc
     utils.cc
     constellations_impl.cc
-    frame_equalizer_impl.cc
     viterbi_decoder/base.cc
 )
 

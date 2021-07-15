@@ -6,13 +6,33 @@
  */
 
 #include "frame_equalizer_impl.h"
-#include <gnuradio/io_signature.h>
 #include "equalizer/base.h"
 #include "equalizer/comb.h"
 #include "equalizer/lms.h"
 #include "equalizer/ls.h"
 #include "equalizer/sta.h"
 #include "utils.h"
+#include <gnuradio/io_signature.h>
+
+extern void exec_freq_correction(cuFloatComplex *in, cuFloatComplex *out,
+                                 float freq_offset, float start_idx, int n,
+                                 int grid_size, int block_size,
+                                 cudaStream_t stream);
+extern void get_block_and_grid_freq_correction(int *minGrid, int *minBlock);
+
+extern void exec_multiply_const(cuFloatComplex *in, cuFloatComplex *out,
+                                cuFloatComplex k, int n, int grid_size,
+                                int block_size, cudaStream_t stream);
+extern void exec_multiply_phase(cuFloatComplex *in, cuFloatComplex *out, float beta,
+                         int n, int grid_size, int block_size,
+                         cudaStream_t stream);
+extern void exec_calc_beta_err(cuFloatComplex *in, int8_t polarity,
+                               int current_symbol_index,
+                               cuFloatComplex *prev_pilots, float *beta,
+                               float *err, float bw, float freq, float *d_err,
+                               int n, int grid_size, int block_size,
+                               cudaStream_t stream);
+
 namespace gr {
 namespace wifigpu {
 
@@ -27,9 +47,8 @@ frame_equalizer_impl::frame_equalizer_impl(int algo, double freq, double bw)
     : gr::block("frame_equalizer",
                 gr::io_signature::make(1, 1, 64 * sizeof(gr_complex)),
                 gr::io_signature::make(1, 1, 48)),
-      d_current_symbol(0), d_equalizer(nullptr),
-      d_freq(freq), d_bw(bw), d_frame_bytes(0), d_frame_symbols(0),
-      d_freq_offset_from_synclong(0.0) {
+      d_current_symbol(0), d_equalizer(nullptr), d_freq(freq), d_bw(bw),
+      d_frame_bytes(0), d_frame_symbols(0), d_freq_offset_from_synclong(0.0) {
 
   message_port_register_out(pmt::mp("symbols"));
 
@@ -42,40 +61,58 @@ frame_equalizer_impl::frame_equalizer_impl(int algo, double freq, double bw)
 
   set_tag_propagation_policy(block::TPP_DONT);
   set_algorithm((Equalizer)algo);
+
+  get_block_and_grid_freq_correction(&d_min_grid_size, &d_block_size);
+  cudaDeviceSynchronize();
+  std::cerr << "minGrid: " << d_min_grid_size << ", blockSize: " << d_block_size
+            << std::endl;
+
+  cudaStreamCreate(&d_stream);
+
+  // Temporary Buffers
+  checkCudaErrors(cudaMalloc((void **)&d_dev_in, d_max_out_buffer));
+  checkCudaErrors(cudaMalloc((void **)&d_dev_out, d_max_out_buffer));
+  checkCudaErrors(cudaMalloc((void **)&d_dev_prev_pilots, 4*sizeof(cuFloatComplex)));
+  checkCudaErrors(cudaMalloc((void **)&d_dev_beta, sizeof(float)));
+  checkCudaErrors(cudaMalloc((void **)&d_dev_err, sizeof(float)));
+  checkCudaErrors(cudaMalloc((void **)&d_dev_d_err, sizeof(float)));
+
+  cuFloatComplex* d_dev_prev_pilots;
+  float *d_dev_beta;
+  float *d_dev_err;
+  float *d_dev_d_err;  
 }
 
-void
-frame_equalizer_impl::set_algorithm(Equalizer algo) {
-	// gr::thread::scoped_lock lock(d_mutex);
-	delete d_equalizer;
+void frame_equalizer_impl::set_algorithm(Equalizer algo) {
+  // gr::thread::scoped_lock lock(d_mutex);
+  delete d_equalizer;
 
-	switch(algo) {
+  switch (algo) {
 
-	case COMB:
-		// dout << "Comb" << std::endl;
-		d_equalizer = new equalizer::comb();
-		break;
-	case LS:
-		// dout << "LS" << std::endl;
-		d_equalizer = new equalizer::ls();
-		break;
-	case LMS:
-		// dout << "LMS" << std::endl;
-		d_equalizer = new equalizer::lms();
-		break;
-	case STA:
-		// dout << "STA" << std::endl;
-		d_equalizer = new equalizer::sta();
-		break;
-	default:
-		throw std::runtime_error("Algorithm not implemented");
-	}
+  case COMB:
+    // dout << "Comb" << std::endl;
+    d_equalizer = new equalizer::comb();
+    break;
+  case LS:
+    // dout << "LS" << std::endl;
+    d_equalizer = new equalizer::ls();
+    break;
+  case LMS:
+    // dout << "LMS" << std::endl;
+    d_equalizer = new equalizer::lms();
+    break;
+  case STA:
+    // dout << "STA" << std::endl;
+    d_equalizer = new equalizer::sta();
+    break;
+  default:
+    throw std::runtime_error("Algorithm not implemented");
+  }
 }
-
 
 void frame_equalizer_impl::forecast(int noutput_items,
                                     gr_vector_int &ninput_items_required) {
-ninput_items_required[0] = noutput_items;
+  ninput_items_required[0] = noutput_items;
 }
 
 int frame_equalizer_impl::general_work(int noutput_items,
@@ -87,6 +124,10 @@ int frame_equalizer_impl::general_work(int noutput_items,
 
   const gr_complex *in = (const gr_complex *)input_items[0];
   uint8_t *out = (uint8_t *)output_items[0];
+
+  checkCudaErrors(cudaMemcpyAsync(d_dev_in, in,
+                                  sizeof(gr_complex) * noutput_items,
+                                  cudaMemcpyHostToDevice, d_stream));
 
   int i = 0;
   int o = 0;
@@ -123,55 +164,69 @@ int frame_equalizer_impl::general_work(int noutput_items,
 
     std::memcpy(current_symbol, in + i * 64, 64 * sizeof(gr_complex));
 
-    // compensate sampling offset
-    for (int i = 0; i < 64; i++) {
-      current_symbol[i] *=
-          exp(gr_complex(0, 2 * M_PI * d_current_symbol * 80 *
-                                (d_epsilon0 + d_er) * (i - 32) / 64));
-    }
+    // // compensate sampling offset
+    // for (int i = 0; i < 64; i++) {
+    //   current_symbol[i] *=
+    //       exp(gr_complex(0, 2 * M_PI * d_current_symbol * 80 *
+    //                             (d_epsilon0 + d_er) * (i - 32) / 64));
+    // }
+
+    // exec_freq_correction((cuFloatComplex *)d_dev_in, (cuFloatComplex *)d_dev_in,
+    //                      2.0 * M_PI * d_current_symbol * 80 *
+    //                          (d_epsilon0 + d_er) / 64.0,
+    //                      -32, 64, 1, 64, d_stream);
 
     gr_complex p = equalizer::base::POLARITY[(d_current_symbol - 2) % 127];
 
-    double beta;
-    if (d_current_symbol < 2) {
-      beta = arg(current_symbol[11] - current_symbol[25] + current_symbol[39] +
-                 current_symbol[53]);
+    // double beta;
+    // if (d_current_symbol < 2) {
+    //   beta = arg(current_symbol[11] - current_symbol[25] + current_symbol[39]
+    //   +
+    //              current_symbol[53]);
 
-    } else {
-      beta = arg((current_symbol[11] * p) + (current_symbol[39] * p) +
-                 (current_symbol[25] * p) + (current_symbol[53] * -p));
-    }
+    // } else {
+    //   beta = arg((current_symbol[11] * p) + (current_symbol[39] * p) +
+    //              (current_symbol[25] * p) + (current_symbol[53] * -p));
+    // }
 
-    double er = arg((conj(d_prev_pilots[0]) * current_symbol[11] * p) +
-                    (conj(d_prev_pilots[1]) * current_symbol[25] * p) +
-                    (conj(d_prev_pilots[2]) * current_symbol[39] * p) +
-                    (conj(d_prev_pilots[3]) * current_symbol[53] * -p));
+    // double er = arg((conj(d_prev_pilots[0]) * current_symbol[11] * p) +
+    //                 (conj(d_prev_pilots[1]) * current_symbol[25] * p) +
+    //                 (conj(d_prev_pilots[2]) * current_symbol[39] * p) +
+    //                 (conj(d_prev_pilots[3]) * current_symbol[53] * -p));
 
-    er *= d_bw / (2 * M_PI * d_freq * 80);
+    // er *= d_bw / (2 * M_PI * d_freq * 80);
 
-    if (d_current_symbol < 2) {
-      d_prev_pilots[0] = current_symbol[11];
-      d_prev_pilots[1] = -current_symbol[25];
-      d_prev_pilots[2] = current_symbol[39];
-      d_prev_pilots[3] = current_symbol[53];
-    } else {
-      d_prev_pilots[0] = current_symbol[11] * p;
-      d_prev_pilots[1] = current_symbol[25] * p;
-      d_prev_pilots[2] = current_symbol[39] * p;
-      d_prev_pilots[3] = current_symbol[53] * -p;
-    }
+    // if (d_current_symbol < 2) {
+    //   d_prev_pilots[0] = current_symbol[11];
+    //   d_prev_pilots[1] = -current_symbol[25];
+    //   d_prev_pilots[2] = current_symbol[39];
+    //   d_prev_pilots[3] = current_symbol[53];
+    // } else {
+    //   d_prev_pilots[0] = current_symbol[11] * p;
+    //   d_prev_pilots[1] = current_symbol[25] * p;
+    //   d_prev_pilots[2] = current_symbol[39] * p;
+    //   d_prev_pilots[3] = current_symbol[53] * -p;
+    // }
 
-    // compensate residual frequency offset
-    for (int i = 0; i < 64; i++) {
-      current_symbol[i] *= exp(gr_complex(0, -beta));
-    }
+    // // update estimate of residual frequency offset
+    // if (d_current_symbol >= 2) {
 
-    // update estimate of residual frequency offset
-    if (d_current_symbol >= 2) {
+    //   double alpha = 0.1;
+    //   d_er = (1 - alpha) * d_er + alpha * er;
+    // }
 
-      double alpha = 0.1;
-      d_er = (1 - alpha) * d_er + alpha * er;
-    }
+    // exec_calc_beta_err(d_dev_in + i * 64, (int8_t)real(p), d_current_symbol,
+    //                    d_dev_prev_pilots, d_dev_beta, d_dev_err, d_bw, d_freq,
+    //                    d_dev_d_err, 1, 1, 1, d_stream);
+
+    // // compensate residual frequency offset
+    // for (int i = 0; i < 64; i++) {
+    //   current_symbol[i] *= exp(gr_complex(0, -beta));
+    // }
+
+    // float beta = 0; // TODO: update multiply_const kernel as phase rotation
+    // exec_multiply_phase(d_dev_in + i * 64, d_dev_in + i * 64,
+    //                    -beta, 64, 1, 64, d_stream);
 
     // do equalization
     d_equalizer->equalize(current_symbol, d_current_symbol, symbols,

@@ -13,6 +13,11 @@
 #include "equalizer/base.h"
 #include "viterbi_decoder/viterbi_decoder.h"
 
+#include <cuda.h>
+#include <cuda_runtime_api.h>
+#include <cuComplex.h>
+#include <helper_cuda.h>
+
 namespace gr {
 namespace wifigpu {
 
@@ -52,6 +57,22 @@ private:
 	constellation_64qam::sptr d_64qam;
 
 	static const int interleaver_pattern[48];
+
+  cudaStream_t d_stream;
+  int d_min_grid_size;
+  int d_block_size;
+
+  cuFloatComplex* d_dev_in;
+  cuFloatComplex* d_dev_out;
+  // int8_t *d_dev_LONG;
+  // int8_t *d_dev_POLARITY;
+  cuFloatComplex* d_dev_prev_pilots;
+  float *d_dev_beta;
+  float *d_dev_err;
+  float *d_dev_d_err;
+
+
+  static const int d_max_out_buffer = 65536;  // max bytes for output buffer
 
 public:
   frame_equalizer_impl(int algo, double freq, double bw);
