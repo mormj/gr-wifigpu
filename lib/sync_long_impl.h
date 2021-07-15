@@ -51,6 +51,7 @@ private:
   float d_freq_offset_short = 0;
 
   int d_num_syms = 0;
+  int ntags = 0;
 
 public:
   sync_long_impl(unsigned int sync_length);

@@ -111,50 +111,34 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
 
   // Look at the tags
   int ninput = std::min(ninput_items[0], ninput_items[1]);
-
+// int ninput = std::min(std::min(ninput_items[0], ninput_items[1]), 8192);
   const uint64_t nread = nitems_read(0);
   const uint64_t nwritten = nitems_written(0);
   get_tags_in_range(d_tags, 0, nread, nread + ninput);
-
-  // Step through the tags and do a convolution with the long training sequency
-  // std::cout << "nread/nwritten:" << nread << " / " << nwritten << std::endl;
   int nconsumed = 0;
   int nproduced = 0;
+
+  if (d_tags.size() > 1)
+  {
+    volatile int x = 7;
+  }
 
   { // finish copying up to the next tag
     auto max_inputs = ninput;
     if (d_tags.size()) {
       // find the next tag
-      for (auto &t : d_tags) {
-        if (t.offset >= (nread + nconsumed)) {
-          max_inputs = t.offset - nread;
-          break;
+      // for (auto &t : d_tags) {
+        if (d_tags[0].offset >= (nread + nconsumed)) {
+          max_inputs = d_tags[0].offset - nread;
+          // break;
         }
-      }
+      // }
     }
-
-    // std::cout << "max_inputs / ninput / nread / nconsumed : "
-    //           << max_inputs << "/" << ninput << "/" << nread << "/"
-    //           << nconsumed << "/" << std::endl;
 
     if (d_state == COPY) {
       while (nconsumed + 80 <= max_inputs &&
              nproduced + 64 <=
                  noutput_items) { // or until i hit the next tag!!!!
-
-        // {
-
-        //   const pmt::pmt_t key = pmt::string_to_symbol("sym1");
-        //   const pmt::pmt_t value = pmt::from_long(d_num_syms++);
-        //   // const pmt::pmt_t srcid = pmt::string_to_symbol(name());
-        //   // add_item_tag(0, nwritten+nproduced+max_index, key, value, srcid);
-        //   add_item_tag(0, nwritten + nproduced, key, value);
-        // }
-
-
-        // std::cout << "consuming80b: " << nread+nconsumed << " -- " <<
-        // nconsumed << " / " << ninput << std::endl; todo - replace with freq
-        // correction
         memcpy(out + nproduced, in + nconsumed + 16,
                sizeof(gr_complex) * 64); // throw away the cyclic prefix
         nproduced += 64;
@@ -167,23 +151,7 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
     int tag_idx = 0;
     for (auto &t : d_tags) {
       auto offset = t.offset;
-
-      // std::cout << "tag at " << offset << std::endl;
-
       if (offset >= nread) {
-        // chew on samples until the next tag
-        if (d_state == COPY) {
-          while (nconsumed + 80 <= (offset - nread)) {
-
-            // std::cout << "consuming80: " << nread+nconsumed << std::endl;
-            // todo - replace with freq correction
-            memcpy(out + nproduced, in + nconsumed + 16 + 1,
-                   sizeof(gr_complex) * 64); // throw away the cyclic prefix
-            nproduced += 64;
-            nconsumed += 80;
-          }
-        }
-
         d_freq_offset_short = pmt::to_double(t.value);
 
         if (offset - nread + d_fftsize <= ninput) {
@@ -240,85 +208,44 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
           const pmt::pmt_t srcid = pmt::string_to_symbol(name());
           // add_item_tag(0, nwritten+nproduced+max_index, key, value, srcid);
           add_item_tag(0, nwritten + nproduced, key, value, srcid);
+
+          // std::cout << "ntags: " << ++ntags << std::endl;
+          // if (std::abs(out[nproduced] - gr_complex(0.83205323,-1.66078582e-8)) > 0.0001 )
+          // {
+          //   volatile int x = 123;
+            
+          // }
+
           nproduced += 128;
 
           d_state = COPY;
 
           nconsumed = (offset - nread + max_index - 160 + 32 + 128 + 1);
-          // std::cout << "];" << std::endl;
-
-          // std::cout << "in = [";
-          // for (size_t i=0; i<host_data.size(); i++)
-          // {
-          //   // std::cout << in[offset - nread+i];
-          //   std::cout << real(in[offset - nread+i]) << "+" << imag(in[offset
-          //   - nread+i]) << "j"; if (i < host_data.size()-1)
-          //     std::cout << ",";
-          // }
-          // std::cout << "];" << std::endl;
-
-          // std::cout << "LONG = [";
-          // for (size_t i=0; i<64; i++)
-          // {
-          //   std::cout << real(LONG[i]) << "+" << imag(LONG[i]) << "j";
-          //   if (i < 63)
-          //     std::cout << ",";
-          // }
-          // std::cout << "];" << std::endl;
 
           // finish copying this burst
           {
             auto max_inputs = ninput;
-
-            // see if there is a next tag
-            if (d_tags.size() >= tag_idx + 1) {
-              // find the next tag
-
-              if (d_tags[tag_idx + 1].offset >= (nread + nconsumed)) {
-                ninput = d_tags[tag_idx + 1].offset - nread;
-                break;
-              }
-            }
-
-            // std::cout << "max_outputs / noutput_items / nread / nconsumed : "
-            // << max_outputs << "/" << noutput_items << "/" << nread << "/" <<
-            // nconsumed
-            // <<
-            // "/" << std::endl;
-
             while (nconsumed + 80 <= max_inputs &&
                    nproduced + 64 <=
                        noutput_items) { // or until i hit the next tag!!!!
 
-              // {
-
-              //   const pmt::pmt_t key = pmt::string_to_symbol("sym2");
-              //   const pmt::pmt_t value = pmt::from_long(d_num_syms++);
-              //   // const pmt::pmt_t srcid = pmt::string_to_symbol(name());
-              //   // add_item_tag(0, nwritten+nproduced+max_index, key, value,
-              //   // srcid);
-              //   add_item_tag(0, nwritten + nproduced, key, value);
-              // }
-
-              // std::cout << "consuming80b: " << nread+nconsumed << " -- " <<
-              // nconsumed
-              // << " / " << ninput << std::endl; todo - replace with freq
-              // correction
               memcpy(out + nproduced, in + nconsumed + 16,
                      sizeof(gr_complex) * 64); // throw away the cyclic prefix
               nproduced += 64;
               nconsumed += 80;
             }
           }
-
-        } else {
+        } 
+        else {
           nconsumed = offset - nread;
         }
       }
 
       tag_idx++;
+      break;
     }
-  } else if (d_state == SYNC) {
+  } 
+  else if (d_state == SYNC) {
 
     // If no tags and not currently processing a potential burst,
     //   then consume all the input and move on
@@ -327,29 +254,9 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
     nproduced = 0;
   }
 
-  // auto nproduced = noutput_items;
-  // auto nconsumed = noutput_items;
-
-  // nconsumed = std::min(ninput, noutput_items);
-  // nproduced = nconsumed;
-
-  // memcpy(out,in_delayed,sizeof(gr_complex)*nproduced);
-
-  // std::cout << "work: consume/produce: " <<  nconsumed << " / " << nproduced
-  // << std::endl;
-
-  // // add tag for this buffer
-  // {
-
-  //   const pmt::pmt_t key = pmt::string_to_symbol("buf");
-  //   const pmt::pmt_t value = pmt::from_long(0);
-  //   // const pmt::pmt_t srcid = pmt::string_to_symbol(name());
-  //   // add_item_tag(0, nwritten+nproduced+max_index, key, value, srcid);
-  //   add_item_tag(0, nwritten, key, value);
-  // }
+  assert((nwritten+nproduced)%64 == 0);
 
   consume_each(nconsumed);
-
   // Tell runtime system how many output items we produced.
   return nproduced;
 }
