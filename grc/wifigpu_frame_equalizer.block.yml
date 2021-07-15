@@ -1,0 +1,30 @@
+id: wifigpu_frame_equalizer
+label: frame equalizer
+category: '[WIFIGPU]'
+templates:
+  imports: import wifigpu
+  make: wifigpu.frame_equalizer(${algo}, ${freq}, ${bw})
+parameters:
+- id: algo
+  label: Algo
+  dtype: int
+- id: freq
+  label: Freq
+  dtype: real
+- id: bw
+  label: Bw
+  dtype: real
+inputs:
+-   domain: stream
+    dtype: complex
+    vlen: 64
+    multiplicity: '1'
+outputs:
+-   domain: stream
+    dtype: byte
+    vlen: 48
+    multiplicity: '1'
+-   domain: message
+    id: symbols
+    optional: true
+file_format: 1

@@ -25,5 +25,6 @@ install(FILES
     api.h
     sync_short.h
     presync.h
-    sync_long.h DESTINATION include/wifigpu
+    sync_long.h
+    frame_equalizer.h DESTINATION include/wifigpu
 )

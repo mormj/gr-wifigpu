@@ -6,6 +6,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 
+
 ###############################################################################
 # CUDA Kernels to be compiled with NVCC
 ###############################################################################
@@ -43,6 +44,12 @@ endif()
 # gr-cuda_buffer is required for the CUDA blocks
 ###############################################################################
 find_package(cuda_buffer REQUIRED)
+check_include_file("xmmintrin.h" SSE2_SUPPORTED)
+
+if(SSE2_SUPPORTED)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse2")
+    add_definitions(-DIEEE80211_MSSE2)
+endif(SSE2_SUPPORTED)
 
 ########################################################################
 # Setup library
@@ -51,7 +58,27 @@ include(GrPlatform) #define LIB_SUFFIX
 
 list(APPEND wifigpu_sources
     ${CUDA_BLOCK_SOURCES}
+    equalizer/base.cc
+    equalizer/comb.cc
+    equalizer/ls.cc
+    equalizer/lms.cc
+    equalizer/sta.cc
+    utils.cc
+    constellations_impl.cc
+    frame_equalizer_impl.cc
+    viterbi_decoder/base.cc
 )
+
+# use SSE2 optimized viterbi implementation if SSE2 is enabled
+if(SSE2_SUPPORTED)
+    list(APPEND wifigpu_sources
+        viterbi_decoder/viterbi_decoder_x86.cc
+    )
+else()
+    list(APPEND wifigpu_sources
+        viterbi_decoder/viterbi_decoder_generic.cc
+    )
+endif(SSE2_SUPPORTED)
 
 set(wifigpu_sources "${wifigpu_sources}" PARENT_SCOPE)
 if(NOT wifigpu_sources)
@@ -60,7 +87,7 @@ if(NOT wifigpu_sources)
 endif(NOT wifigpu_sources)
 
 add_library(gnuradio-wifigpu SHARED ${wifigpu_sources})
-target_link_libraries(gnuradio-wifigpu PUBLIC gnuradio::gnuradio-runtime
+target_link_libraries(gnuradio-wifigpu PUBLIC gnuradio::gnuradio-runtime gnuradio::gnuradio-digital
     ${CUDA_CUDART_LIBRARY} 
     ${CUDA_CUFFT_LIBRARIES} 
     ${CUDA_BUFFER_LIBRARIES})
