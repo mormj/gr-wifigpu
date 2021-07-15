@@ -50,6 +50,8 @@ private:
   float d_freq_offset = 0;
   float d_freq_offset_short = 0;
 
+  int d_num_syms = 0;
+
 public:
   sync_long_impl(unsigned int sync_length);
   ~sync_long_impl();
