@@ -258,7 +258,7 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
 
 
           uint64_t nn = nread+nconsumed-298;
-          if (nn % 41481 != 0)
+          if (nn % 41481 != 138)
           {
             volatile int x = 7;
           }

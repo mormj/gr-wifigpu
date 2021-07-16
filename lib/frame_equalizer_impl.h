@@ -74,6 +74,8 @@ private:
 
   static const int d_max_out_buffer = 65536;  // max bytes for output buffer
 
+  enum { WAITING_FOR_TAG, FINISH_LAST_FRAME } d_state = WAITING_FOR_TAG;
+
 public:
   frame_equalizer_impl(int algo, double freq, double bw);
 

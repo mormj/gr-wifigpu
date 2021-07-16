@@ -23,9 +23,9 @@ extern void get_block_and_grid_freq_correction(int *minGrid, int *minBlock);
 extern void exec_multiply_const(cuFloatComplex *in, cuFloatComplex *out,
                                 cuFloatComplex k, int n, int grid_size,
                                 int block_size, cudaStream_t stream);
-extern void exec_multiply_phase(cuFloatComplex *in, cuFloatComplex *out, float beta,
-                         int n, int grid_size, int block_size,
-                         cudaStream_t stream);
+extern void exec_multiply_phase(cuFloatComplex *in, cuFloatComplex *out,
+                                float beta, int n, int grid_size,
+                                int block_size, cudaStream_t stream);
 extern void exec_calc_beta_err(cuFloatComplex *in, int8_t polarity,
                                int current_symbol_index,
                                cuFloatComplex *prev_pilots, float *beta,
@@ -72,15 +72,18 @@ frame_equalizer_impl::frame_equalizer_impl(int algo, double freq, double bw)
   // Temporary Buffers
   checkCudaErrors(cudaMalloc((void **)&d_dev_in, d_max_out_buffer));
   checkCudaErrors(cudaMalloc((void **)&d_dev_out, d_max_out_buffer));
-  checkCudaErrors(cudaMalloc((void **)&d_dev_prev_pilots, 4*sizeof(cuFloatComplex)));
+  checkCudaErrors(
+      cudaMalloc((void **)&d_dev_prev_pilots, 4 * sizeof(cuFloatComplex)));
   checkCudaErrors(cudaMalloc((void **)&d_dev_beta, sizeof(float)));
   checkCudaErrors(cudaMalloc((void **)&d_dev_err, sizeof(float)));
   checkCudaErrors(cudaMalloc((void **)&d_dev_d_err, sizeof(float)));
 
-  cuFloatComplex* d_dev_prev_pilots;
+  cuFloatComplex *d_dev_prev_pilots;
   float *d_dev_beta;
   float *d_dev_err;
-  float *d_dev_d_err;  
+  float *d_dev_d_err;
+
+  set_output_multiple(64);
 }
 
 void frame_equalizer_impl::set_algorithm(Equalizer algo) {
@@ -134,15 +137,138 @@ int frame_equalizer_impl::general_work(int noutput_items,
   gr_complex symbols[48];
   gr_complex current_symbol[64];
 
+  auto nread = nitems_read(0);
+  auto nwritten = nitems_written(0);
   // dout << "FRAME EQUALIZER: input " << ninput_items[0] << "  output " <<
   // noutput_items << std::endl;
 
-  while ((i < ninput_items[0]) && (o < noutput_items)) {
+  int symbols_to_consume = ninput_items[0];
 
-    get_tags_in_window(tags, 0, i, i + 1, pmt::string_to_symbol("wifi_start"));
+  get_tags_in_window(tags, 0, 0, noutput_items,
+                     pmt::string_to_symbol("wifi_start"));
 
-    // new frame
+  if (d_state == FINISH_LAST_FRAME) {
+    if (noutput_items < symbols_to_consume) {
+      symbols_to_consume = noutput_items;
+    }
     if (tags.size()) {
+      // only consume up to the next tag
+      symbols_to_consume = tags[0].offset - nread;
+      if (symbols_to_consume == 0) {
+        d_state = WAITING_FOR_TAG;
+        consume_each(0);
+        return 0;
+      }
+    }
+
+    if (d_frame_symbols + 2 > d_current_symbol &&
+        d_frame_symbols + 2 - d_current_symbol < symbols_to_consume) {
+      symbols_to_consume = d_frame_symbols + 2 - d_current_symbol;
+    }
+
+    if (symbols_to_consume) {
+      auto symbols_to_process = symbols_to_consume;
+      if (symbols_to_process > (d_frame_symbols + 2)) {
+        symbols_to_process = d_frame_symbols + 2;
+      }
+
+      // auto gridSize = (symbols_to_process + d_block_size - 1) / d_block_size;
+
+      // // prior to the tag, we need to finish up the previous frame
+      // exec_freq_correction(
+      //     (cuFloatComplex *)d_dev_in, (cuFloatComplex *)d_dev_in,
+      //     2.0 * M_PI * d_current_symbol * 80 * (d_epsilon0 + d_er) / 64.0,
+      //     -32, symbols_to_process, gridSize, d_block_size, d_stream);
+
+      for (int o = 0; o < symbols_to_process; o++) {
+
+        if (d_current_symbol == 3) {
+          pmt::pmt_t dict = pmt::make_dict();
+          dict = pmt::dict_add(dict, pmt::mp("frame_bytes"),
+                               pmt::from_uint64(d_frame_bytes));
+          dict = pmt::dict_add(dict, pmt::mp("encoding"),
+                               pmt::from_uint64(d_frame_encoding));
+          dict = pmt::dict_add(dict, pmt::mp("snr"),
+                               pmt::from_double(d_equalizer->get_snr()));
+          dict = pmt::dict_add(dict, pmt::mp("freq"), pmt::from_double(d_freq));
+          dict = pmt::dict_add(dict, pmt::mp("freq_offset"),
+                               pmt::from_double(d_freq_offset_from_synclong));
+          add_item_tag(0, nitems_written(0) + o,
+                       pmt::string_to_symbol("wifi_start"), dict,
+                       pmt::string_to_symbol(alias()));
+        }
+
+        std::memcpy(current_symbol, in + o * 64, 64 * sizeof(gr_complex));
+
+        // compensate sampling offset
+        for (int i = 0; i < 64; i++) {
+          current_symbol[i] *=
+              exp(gr_complex(0, 2 * M_PI * d_current_symbol * 80 *
+                                    (d_epsilon0 + d_er) * (i - 32) / 64));
+        }
+
+        gr_complex p = equalizer::base::POLARITY[(d_current_symbol - 2) % 127];
+
+        double beta;
+        if (d_current_symbol < 2) {
+          beta = arg(current_symbol[11] - current_symbol[25] +
+                     current_symbol[39] + current_symbol[53]);
+
+        } else {
+          beta = arg((current_symbol[11] * p) + (current_symbol[39] * p) +
+                     (current_symbol[25] * p) + (current_symbol[53] * -p));
+        }
+
+        double er = arg((conj(d_prev_pilots[0]) * current_symbol[11] * p) +
+                        (conj(d_prev_pilots[1]) * current_symbol[25] * p) +
+                        (conj(d_prev_pilots[2]) * current_symbol[39] * p) +
+                        (conj(d_prev_pilots[3]) * current_symbol[53] * -p));
+
+        er *= d_bw / (2 * M_PI * d_freq * 80);
+
+        if (d_current_symbol < 2) {
+          d_prev_pilots[0] = current_symbol[11];
+          d_prev_pilots[1] = -current_symbol[25];
+          d_prev_pilots[2] = current_symbol[39];
+          d_prev_pilots[3] = current_symbol[53];
+        } else {
+          d_prev_pilots[0] = current_symbol[11] * p;
+          d_prev_pilots[1] = current_symbol[25] * p;
+          d_prev_pilots[2] = current_symbol[39] * p;
+          d_prev_pilots[3] = current_symbol[53] * -p;
+        }
+
+        // compensate residual frequency offset
+        for (int i = 0; i < 64; i++) {
+          current_symbol[i] *= exp(gr_complex(0, -beta));
+        }
+
+        // update estimate of residual frequency offset
+        if (d_current_symbol >= 2) {
+
+          double alpha = 0.1;
+          d_er = (1 - alpha) * d_er + alpha * er;
+        }
+
+        // do equalization
+        d_equalizer->equalize(current_symbol, d_current_symbol, symbols,
+                              out + o * 48, d_frame_mod);
+
+        d_current_symbol++;
+      }
+
+      if (d_current_symbol > d_frame_symbols + 2) {
+        d_state = WAITING_FOR_TAG;
+      }
+
+      consume(0, symbols_to_consume);
+      return symbols_to_process;
+    }
+  } else {
+
+    if (tags.size()) {
+      // new frame
+
       d_current_symbol = 0;
       d_frame_symbols = 0;
       d_frame_mod = d_bpsk;
@@ -153,120 +279,114 @@ int frame_equalizer_impl::general_work(int noutput_items,
           pmt::to_double(tags.front().value) * d_bw / (2 * M_PI * d_freq);
       d_er = 0;
 
-      // dout << "epsilon: " << d_epsilon0 << std::endl;
-    }
+      auto frame_start = tags[0].offset - nread;
 
-    // not interesting -> skip
-    if (d_current_symbol > (d_frame_symbols + 2)) {
-      i++;
-      continue;
-    }
-
-    std::memcpy(current_symbol, in + i * 64, 64 * sizeof(gr_complex));
-
-    // // compensate sampling offset
-    // for (int i = 0; i < 64; i++) {
-    //   current_symbol[i] *=
-    //       exp(gr_complex(0, 2 * M_PI * d_current_symbol * 80 *
-    //                             (d_epsilon0 + d_er) * (i - 32) / 64));
-    // }
-
-    // exec_freq_correction((cuFloatComplex *)d_dev_in, (cuFloatComplex *)d_dev_in,
-    //                      2.0 * M_PI * d_current_symbol * 80 *
-    //                          (d_epsilon0 + d_er) / 64.0,
-    //                      -32, 64, 1, 64, d_stream);
-
-    gr_complex p = equalizer::base::POLARITY[(d_current_symbol - 2) % 127];
-
-    // double beta;
-    // if (d_current_symbol < 2) {
-    //   beta = arg(current_symbol[11] - current_symbol[25] + current_symbol[39]
-    //   +
-    //              current_symbol[53]);
-
-    // } else {
-    //   beta = arg((current_symbol[11] * p) + (current_symbol[39] * p) +
-    //              (current_symbol[25] * p) + (current_symbol[53] * -p));
-    // }
-
-    // double er = arg((conj(d_prev_pilots[0]) * current_symbol[11] * p) +
-    //                 (conj(d_prev_pilots[1]) * current_symbol[25] * p) +
-    //                 (conj(d_prev_pilots[2]) * current_symbol[39] * p) +
-    //                 (conj(d_prev_pilots[3]) * current_symbol[53] * -p));
-
-    // er *= d_bw / (2 * M_PI * d_freq * 80);
-
-    // if (d_current_symbol < 2) {
-    //   d_prev_pilots[0] = current_symbol[11];
-    //   d_prev_pilots[1] = -current_symbol[25];
-    //   d_prev_pilots[2] = current_symbol[39];
-    //   d_prev_pilots[3] = current_symbol[53];
-    // } else {
-    //   d_prev_pilots[0] = current_symbol[11] * p;
-    //   d_prev_pilots[1] = current_symbol[25] * p;
-    //   d_prev_pilots[2] = current_symbol[39] * p;
-    //   d_prev_pilots[3] = current_symbol[53] * -p;
-    // }
-
-    // // update estimate of residual frequency offset
-    // if (d_current_symbol >= 2) {
-
-    //   double alpha = 0.1;
-    //   d_er = (1 - alpha) * d_er + alpha * er;
-    // }
-
-    // exec_calc_beta_err(d_dev_in + i * 64, (int8_t)real(p), d_current_symbol,
-    //                    d_dev_prev_pilots, d_dev_beta, d_dev_err, d_bw, d_freq,
-    //                    d_dev_d_err, 1, 1, 1, d_stream);
-
-    // // compensate residual frequency offset
-    // for (int i = 0; i < 64; i++) {
-    //   current_symbol[i] *= exp(gr_complex(0, -beta));
-    // }
-
-    // float beta = 0; // TODO: update multiply_const kernel as phase rotation
-    // exec_multiply_phase(d_dev_in + i * 64, d_dev_in + i * 64,
-    //                    -beta, 64, 1, 64, d_stream);
-
-    // do equalization
-    d_equalizer->equalize(current_symbol, d_current_symbol, symbols,
-                          out + o * 48, d_frame_mod);
-
-    // signal field
-    if (d_current_symbol == 2) {
-
-      if (decode_signal_field(out + o * 48)) {
-
-        pmt::pmt_t dict = pmt::make_dict();
-        dict = pmt::dict_add(dict, pmt::mp("frame_bytes"),
-                             pmt::from_uint64(d_frame_bytes));
-        dict = pmt::dict_add(dict, pmt::mp("encoding"),
-                             pmt::from_uint64(d_frame_encoding));
-        dict = pmt::dict_add(dict, pmt::mp("snr"),
-                             pmt::from_double(d_equalizer->get_snr()));
-        dict = pmt::dict_add(dict, pmt::mp("freq"), pmt::from_double(d_freq));
-        dict = pmt::dict_add(dict, pmt::mp("freq_offset"),
-                             pmt::from_double(d_freq_offset_from_synclong));
-        add_item_tag(0, nitems_written(0) + o,
-                     pmt::string_to_symbol("wifi_start"), dict,
-                     pmt::string_to_symbol(alias()));
+      if (frame_start + 3 >= ninput_items[0]) {
+        consume(0, frame_start);
+        return 0;
       }
-    }
 
-    if (d_current_symbol > 2) {
-      o++;
-      pmt::pmt_t pdu = pmt::make_dict();
-      message_port_pub(
-          pmt::mp("symbols"),
-          pmt::cons(pmt::make_dict(), pmt::init_c32vector(48, symbols)));
-    }
+      for (int o = 0; o < 3; o++) {
+        std::memcpy(current_symbol, in + o * 64, 64 * sizeof(gr_complex));
 
-    i++;
-    d_current_symbol++;
+        // compensate sampling offset
+        for (int i = 0; i < 64; i++) {
+          current_symbol[i] *=
+              exp(gr_complex(0, 2 * M_PI * d_current_symbol * 80 *
+                                    (d_epsilon0 + d_er) * (i - 32) / 64));
+        }
+
+        gr_complex p = equalizer::base::POLARITY[(d_current_symbol - 2) % 127];
+
+        double beta;
+        if (d_current_symbol < 2) {
+          beta = arg(current_symbol[11] - current_symbol[25] +
+                     current_symbol[39] + current_symbol[53]);
+
+        } else {
+          beta = arg((current_symbol[11] * p) + (current_symbol[39] * p) +
+                     (current_symbol[25] * p) + (current_symbol[53] * -p));
+        }
+
+        double er = arg((conj(d_prev_pilots[0]) * current_symbol[11] * p) +
+                        (conj(d_prev_pilots[1]) * current_symbol[25] * p) +
+                        (conj(d_prev_pilots[2]) * current_symbol[39] * p) +
+                        (conj(d_prev_pilots[3]) * current_symbol[53] * -p));
+
+        er *= d_bw / (2 * M_PI * d_freq * 80);
+
+        if (d_current_symbol < 2) {
+          d_prev_pilots[0] = current_symbol[11];
+          d_prev_pilots[1] = -current_symbol[25];
+          d_prev_pilots[2] = current_symbol[39];
+          d_prev_pilots[3] = current_symbol[53];
+        } else {
+          d_prev_pilots[0] = current_symbol[11] * p;
+          d_prev_pilots[1] = current_symbol[25] * p;
+          d_prev_pilots[2] = current_symbol[39] * p;
+          d_prev_pilots[3] = current_symbol[53] * -p;
+        }
+
+        // compensate residual frequency offset
+        for (int i = 0; i < 64; i++) {
+          current_symbol[i] *= exp(gr_complex(0, -beta));
+        }
+
+        // update estimate of residual frequency offset
+        if (d_current_symbol >= 2) {
+
+          double alpha = 0.1;
+          d_er = (1 - alpha) * d_er + alpha * er;
+        }
+
+        // do equalization
+        d_equalizer->equalize(current_symbol, d_current_symbol, symbols,
+                              out + o * 48, d_frame_mod);
+
+        // // signal field
+        if (d_current_symbol == 2) {
+          decode_signal_field(out + o * 48);
+          // if (decode_signal_field(out + o * 48)) {
+
+        //     pmt::pmt_t dict = pmt::make_dict();
+        //     dict = pmt::dict_add(dict, pmt::mp("frame_bytes"),
+        //                          pmt::from_uint64(d_frame_bytes));
+        //     dict = pmt::dict_add(dict, pmt::mp("encoding"),
+        //                          pmt::from_uint64(d_frame_encoding));
+        //     dict = pmt::dict_add(dict, pmt::mp("snr"),
+        //                          pmt::from_double(d_equalizer->get_snr()));
+        //     dict =
+        //         pmt::dict_add(dict, pmt::mp("freq"),
+        //         pmt::from_double(d_freq));
+        //     dict = pmt::dict_add(dict, pmt::mp("freq_offset"),
+        //                          pmt::from_double(d_freq_offset_from_synclong));
+        //     add_item_tag(0, nitems_written(0) + o,
+        //                  pmt::string_to_symbol("wifi_start"), dict,
+        //                  pmt::string_to_symbol(alias()));
+        //   }
+        }
+
+        if (d_current_symbol > 2) {
+          o++;
+          pmt::pmt_t pdu = pmt::make_dict();
+          message_port_pub(
+              pmt::mp("symbols"),
+              pmt::cons(pmt::make_dict(), pmt::init_c32vector(48, symbols)));
+        }
+
+        d_current_symbol++;
+      }
+
+      d_state = FINISH_LAST_FRAME;
+
+      consume(0, 3);
+      return 0;
+
+    } else {
+      consume(0, ninput_items[0]);
+      return 0;
+    }
   }
-
-  consume(0, i);
-  return o;
 }
 
 bool frame_equalizer_impl::decode_signal_field(uint8_t *rx_bits) {
