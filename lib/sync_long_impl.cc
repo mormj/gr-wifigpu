@@ -84,6 +84,8 @@ sync_long_impl::sync_long_impl(unsigned int sync_length)
   get_block_and_grid_multiply(&d_min_grid_size, &d_block_size);
 
   set_tag_propagation_policy(TPP_DONT);
+
+  set_output_multiple(4096);
 }
 
 /*
@@ -111,29 +113,38 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
 
   // Look at the tags
   int ninput = std::min(ninput_items[0], ninput_items[1]);
-// int ninput = std::min(std::min(ninput_items[0], ninput_items[1]), 8192);
+  // int ninput = std::min(std::min(ninput_items[0], ninput_items[1]), 8192);
   const uint64_t nread = nitems_read(0);
   const uint64_t nwritten = nitems_written(0);
   get_tags_in_range(d_tags, 0, nread, nread + ninput);
   int nconsumed = 0;
   int nproduced = 0;
 
-  if (d_tags.size() > 1)
-  {
+  if (d_tags.size() > 1) {
     volatile int x = 7;
   }
 
+  // std::cout << "work: " << ninput << " " << noutput_items;
+
+  // if (0)
   { // finish copying up to the next tag
     auto max_inputs = ninput;
     if (d_tags.size()) {
+      // std::cout << "   There is a tag in this work() call " << std::endl;
       // find the next tag
       // for (auto &t : d_tags) {
-        if (d_tags[0].offset >= (nread + nconsumed)) {
-          max_inputs = d_tags[0].offset - nread;
-          // break;
-        }
+      if (d_tags[0].offset >= (nread + nconsumed)) {
+
+        max_inputs = d_tags[0].offset - nread;
+        // std::cout << "       " << max_inputs << "/" << ninput <<  std::endl;
+        // break;
+      }
       // }
+
+      // std::cout << " " << max_inputs << " " << d_tags[0].offset << std::endl;
     }
+
+    // std::cout << std::endl;
 
     if (d_state == COPY) {
       while (nconsumed + 80 <= max_inputs &&
@@ -141,9 +152,17 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
                  noutput_items) { // or until i hit the next tag!!!!
         memcpy(out + nproduced, in + nconsumed + 16,
                sizeof(gr_complex) * 64); // throw away the cyclic prefix
+        // std::cout << "sym2 " << d_num_syms << " " << nread + nconsumed << " "
+        //           << nwritten + nproduced << std::endl;
         nproduced += 64;
         nconsumed += 80;
+
+        d_num_syms++;
       }
+      // if (nproduced != 0 && nconsumed != 0)
+      // std::cout << "copy2: " << nproduced << "/" << nconsumed << "/" << nread
+      // << "/" << nwritten +nproduced<< "/" << ninput << "/" << noutput_items
+      // << " --- " << d_num_syms  << std::endl;
     }
   }
 
@@ -154,8 +173,11 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
       if (offset >= nread) {
         d_freq_offset_short = pmt::to_double(t.value);
 
-        if (offset - nread + d_fftsize <= ninput) {
+        if (offset - nread + d_fftsize <= ninput && noutput_items >= 128 &&
+            ((d_state == SYNC) ||
+             (d_state == COPY && (offset - nread - nconsumed < 64)))) {
 
+#if 0
           checkCudaErrors(cudaMemcpyAsync(d_dev_in, &in[offset - nread],
                                           d_fftsize * sizeof(cufftComplex),
                                           cudaMemcpyHostToDevice, d_stream));
@@ -193,7 +215,9 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
               max_index = i;
             }
           }
+#endif
 
+          size_t max_index = 297;
           // nproduced += d_fftsize;
 
           // Copy the LTF symbols
@@ -204,23 +228,40 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
 
           const pmt::pmt_t key = pmt::string_to_symbol("wifi_start");
           const pmt::pmt_t value = // pmt::from_long(max_index);
-          pmt::from_double(d_freq_offset_short - d_freq_offset);
+              pmt::from_double(d_freq_offset_short - d_freq_offset);
           const pmt::pmt_t srcid = pmt::string_to_symbol(name());
           // add_item_tag(0, nwritten+nproduced+max_index, key, value, srcid);
           add_item_tag(0, nwritten + nproduced, key, value, srcid);
-
-          // std::cout << "ntags: " << ++ntags << std::endl;
-          // if (std::abs(out[nproduced] - gr_complex(0.83205323,-1.66078582e-8)) > 0.0001 )
+          // std::cout << "  *********** tag on item: " << nwritten+nproduced <<
+          // " --- " << d_num_syms <<std::endl; std::cout << "ntags: " <<
+          // ++ntags << std::endl; if (std::abs(out[nproduced] -
+          // gr_complex(0.83205323,-1.66078582e-8)) > 0.0001 )
           // {
           //   volatile int x = 123;
-            
-          // }
 
+          // }
+          if (d_num_syms != 514)
+          {
+            volatile int x = 7;
+          }
+
+          d_num_syms = 0;
+          std::cout << "tag0 " << d_num_syms << " "
+                    << nread + (offset - nread + max_index - 160 + 32 + 1)
+                    << " " << nwritten + nproduced << " " << nread << " "
+                    << offset << std::endl;
           nproduced += 128;
 
           d_state = COPY;
 
           nconsumed = (offset - nread + max_index - 160 + 32 + 128 + 1);
+
+
+          uint64_t nn = nread+nconsumed-298;
+          if (nn % 41481 != 0)
+          {
+            volatile int x = 7;
+          }
 
           // finish copying this burst
           {
@@ -231,12 +272,18 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
 
               memcpy(out + nproduced, in + nconsumed + 16,
                      sizeof(gr_complex) * 64); // throw away the cyclic prefix
+              // std::cout << "sym1 " << d_num_syms << " " << nread + nconsumed
+              //           << " " << nwritten + nproduced << std::endl;
               nproduced += 64;
               nconsumed += 80;
+              d_num_syms++;
             }
+            // std::cout << "copy1: " << nproduced << "/" << nconsumed << "/" <<
+            // nread << "/" << nwritten << "/" << ninput << "/" << noutput_items
+            // << " --- " << d_num_syms  << std::endl;
           }
-        } 
-        else {
+
+        } else if (d_state == SYNC) {
           nconsumed = offset - nread;
         }
       }
@@ -244,8 +291,7 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
       tag_idx++;
       break;
     }
-  } 
-  else if (d_state == SYNC) {
+  } else if (d_state == SYNC) {
 
     // If no tags and not currently processing a potential burst,
     //   then consume all the input and move on
@@ -254,8 +300,8 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
     nproduced = 0;
   }
 
-  assert((nwritten+nproduced)%64 == 0);
-
+  assert((nwritten + nproduced) % 64 == 0);
+  cudaStreamSynchronize(d_stream);
   consume_each(nconsumed);
   // Tell runtime system how many output items we produced.
   return nproduced;
