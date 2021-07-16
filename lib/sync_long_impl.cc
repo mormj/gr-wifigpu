@@ -116,10 +116,74 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
   // int ninput = std::min(std::min(ninput_items[0], ninput_items[1]), 8192);
   const uint64_t nread = nitems_read(0);
   const uint64_t nwritten = nitems_written(0);
-  get_tags_in_range(d_tags, 0, nread, nread + ninput);
-  int nconsumed = 0;
+  get_tags_in_range(tags, 0, nread, nread + ninput);
+
+  int nconsumed = ninput;
   int nproduced = 0;
 
+  if (d_state == FINISH_LAST_FRAME) {
+    if (tags.size()) {
+      // only consume up to the next tag
+      nconsumed = tags[0].offset - nread;
+      if (nconsumed < 80) {
+        d_state = WAITING_FOR_TAG;
+        consume_each(nconsumed);
+        return 0;
+      }
+    }
+
+    if (nconsumed) {
+
+      int i = 0;
+      int o = 0;
+      while (i + 80 <= nconsumed && o + 64 <= noutput_items) {
+        memcpy(out + o, in + i + 16,
+               sizeof(gr_complex) * 64); // throw away the cyclic prefix
+
+        i += 80;
+        o += 64;
+      }
+
+      consume_each(i);
+      return o;
+    }
+  } else { // WAITING_FOR_TAG
+
+    if (tags.size()) {
+      auto offset = tags[0].offset;
+
+      d_freq_offset_short = pmt::to_double(tags[0].value);
+
+      if (offset - nread + d_fftsize <= ninput && noutput_items >= 128) {
+
+        size_t max_index = 297;
+
+        // Copy the LTF symbols
+        // std::cout << max_index << std::endl;
+        memcpy(out + nproduced,
+               in + (offset - nread + max_index - 160 + 32 + 1),
+               sizeof(gr_complex) * 128);
+
+        const pmt::pmt_t key = pmt::string_to_symbol("wifi_start");
+        const pmt::pmt_t value = // pmt::from_long(max_index);
+            pmt::from_double(d_freq_offset_short - d_freq_offset);
+        const pmt::pmt_t srcid = pmt::string_to_symbol(name());
+        // add_item_tag(0, nwritten+nproduced+max_index, key, value, srcid);
+        add_item_tag(0, nwritten + nproduced, key, value, srcid);
+        d_num_syms = 0;
+        nproduced += 128;
+        d_state = FINISH_LAST_FRAME;
+        nconsumed = (offset - nread + max_index - 160 + 32 + 128 + 1);
+
+        consume_each(nconsumed);
+        return nproduced;
+      } else {
+        consume_each(offset - nread);
+        return 0;
+      }
+    }
+  }
+#if 0
   if (d_tags.size() > 1) {
     volatile int x = 7;
   }
@@ -300,49 +364,51 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
     nproduced = 0;
   }
 
-  assert((nwritten + nproduced) % 64 == 0);
-  cudaStreamSynchronize(d_stream);
-  consume_each(nconsumed);
-  // Tell runtime system how many output items we produced.
-  return nproduced;
-}
+#endif
 
-const std::vector<gr_complex> sync_long_impl::LONG = {
+    assert((nwritten + nproduced) % 64 == 0);
+    cudaStreamSynchronize(d_stream);
+    consume_each(nconsumed);
+    // Tell runtime system how many output items we produced.
+    return nproduced;
+  }
 
-    gr_complex(-0.0455, -1.0679), gr_complex(0.3528, -0.9865),
-    gr_complex(0.8594, 0.7348),   gr_complex(0.1874, 0.2475),
-    gr_complex(0.5309, -0.7784),  gr_complex(-1.0218, -0.4897),
-    gr_complex(-0.3401, -0.9423), gr_complex(0.8657, -0.2298),
-    gr_complex(0.4734, 0.0362),   gr_complex(0.0088, -1.0207),
-    gr_complex(-1.2142, -0.4205), gr_complex(0.2172, -0.5195),
-    gr_complex(0.5207, -0.1326),  gr_complex(-0.1995, 1.4259),
-    gr_complex(1.0583, -0.0363),  gr_complex(0.5547, -0.5547),
-    gr_complex(0.3277, 0.8728),   gr_complex(-0.5077, 0.3488),
-    gr_complex(-1.1650, 0.5789),  gr_complex(0.7297, 0.8197),
-    gr_complex(0.6173, 0.1253),   gr_complex(-0.5353, 0.7214),
-    gr_complex(-0.5011, -0.1935), gr_complex(-0.3110, -1.3392),
-    gr_complex(-1.0818, -0.1470), gr_complex(-1.1300, -0.1820),
-    gr_complex(0.6663, -0.6571),  gr_complex(-0.0249, 0.4773),
-    gr_complex(-0.8155, 1.0218),  gr_complex(0.8140, 0.9396),
-    gr_complex(0.1090, 0.8662),   gr_complex(-1.3868, -0.0000),
-    gr_complex(0.1090, -0.8662),  gr_complex(0.8140, -0.9396),
-    gr_complex(-0.8155, -1.0218), gr_complex(-0.0249, -0.4773),
-    gr_complex(0.6663, 0.6571),   gr_complex(-1.1300, 0.1820),
-    gr_complex(-1.0818, 0.1470),  gr_complex(-0.3110, 1.3392),
-    gr_complex(-0.5011, 0.1935),  gr_complex(-0.5353, -0.7214),
-    gr_complex(0.6173, -0.1253),  gr_complex(0.7297, -0.8197),
-    gr_complex(-1.1650, -0.5789), gr_complex(-0.5077, -0.3488),
-    gr_complex(0.3277, -0.8728),  gr_complex(0.5547, 0.5547),
-    gr_complex(1.0583, 0.0363),   gr_complex(-0.1995, -1.4259),
-    gr_complex(0.5207, 0.1326),   gr_complex(0.2172, 0.5195),
-    gr_complex(-1.2142, 0.4205),  gr_complex(0.0088, 1.0207),
-    gr_complex(0.4734, -0.0362),  gr_complex(0.8657, 0.2298),
-    gr_complex(-0.3401, 0.9423),  gr_complex(-1.0218, 0.4897),
-    gr_complex(0.5309, 0.7784),   gr_complex(0.1874, -0.2475),
-    gr_complex(0.8594, -0.7348),  gr_complex(0.3528, 0.9865),
-    gr_complex(-0.0455, 1.0679),  gr_complex(1.3868, -0.0000),
+  const std::vector<gr_complex> sync_long_impl::LONG = {
 
-};
+      gr_complex(-0.0455, -1.0679), gr_complex(0.3528, -0.9865),
+      gr_complex(0.8594, 0.7348),   gr_complex(0.1874, 0.2475),
+      gr_complex(0.5309, -0.7784),  gr_complex(-1.0218, -0.4897),
+      gr_complex(-0.3401, -0.9423), gr_complex(0.8657, -0.2298),
+      gr_complex(0.4734, 0.0362),   gr_complex(0.0088, -1.0207),
+      gr_complex(-1.2142, -0.4205), gr_complex(0.2172, -0.5195),
+      gr_complex(0.5207, -0.1326),  gr_complex(-0.1995, 1.4259),
+      gr_complex(1.0583, -0.0363),  gr_complex(0.5547, -0.5547),
+      gr_complex(0.3277, 0.8728),   gr_complex(-0.5077, 0.3488),
+      gr_complex(-1.1650, 0.5789),  gr_complex(0.7297, 0.8197),
+      gr_complex(0.6173, 0.1253),   gr_complex(-0.5353, 0.7214),
+      gr_complex(-0.5011, -0.1935), gr_complex(-0.3110, -1.3392),
+      gr_complex(-1.0818, -0.1470), gr_complex(-1.1300, -0.1820),
+      gr_complex(0.6663, -0.6571),  gr_complex(-0.0249, 0.4773),
+      gr_complex(-0.8155, 1.0218),  gr_complex(0.8140, 0.9396),
+      gr_complex(0.1090, 0.8662),   gr_complex(-1.3868, -0.0000),
+      gr_complex(0.1090, -0.8662),  gr_complex(0.8140, -0.9396),
+      gr_complex(-0.8155, -1.0218), gr_complex(-0.0249, -0.4773),
+      gr_complex(0.6663, 0.6571),   gr_complex(-1.1300, 0.1820),
+      gr_complex(-1.0818, 0.1470),  gr_complex(-0.3110, 1.3392),
+      gr_complex(-0.5011, 0.1935),  gr_complex(-0.5353, -0.7214),
+      gr_complex(0.6173, -0.1253),  gr_complex(0.7297, -0.8197),
+      gr_complex(-1.1650, -0.5789), gr_complex(-0.5077, -0.3488),
+      gr_complex(0.3277, -0.8728),  gr_complex(0.5547, 0.5547),
+      gr_complex(1.0583, 0.0363),   gr_complex(-0.1995, -1.4259),
+      gr_complex(0.5207, 0.1326),   gr_complex(0.2172, 0.5195),
+      gr_complex(-1.2142, 0.4205),  gr_complex(0.0088, 1.0207),
+      gr_complex(0.4734, -0.0362),  gr_complex(0.8657, 0.2298),
+      gr_complex(-0.3401, 0.9423),  gr_complex(-1.0218, 0.4897),
+      gr_complex(0.5309, 0.7784),   gr_complex(0.1874, -0.2475),
+      gr_complex(0.8594, -0.7348),  gr_complex(0.3528, 0.9865),
+      gr_complex(-0.0455, 1.0679),  gr_complex(1.3868, -0.0000),
+
+  };
 
 } /* namespace wifigpu */
-} /* namespace gr */
+} // namespace wifigpu

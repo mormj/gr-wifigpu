@@ -31,7 +31,8 @@ namespace wifigpu {
 
 class sync_long_impl : public sync_long {
 private:
-  enum { SYNC, COPY, RESET } d_state = SYNC;
+  // enum { SYNC, COPY, RESET } d_state = SYNC;
+  enum { WAITING_FOR_TAG, FINISH_LAST_FRAME } d_state = WAITING_FOR_TAG;
   unsigned int d_sync_length;
   static const std::vector<gr_complex> LONG;
   int d_fftsize = 512;
@@ -45,6 +46,7 @@ private:
   int d_block_size;
 
   std::vector<gr::tag_t> d_tags;
+  std::vector<gr::tag_t> tags;
 
   int d_ncopied = 0;
   float d_freq_offset = 0;
