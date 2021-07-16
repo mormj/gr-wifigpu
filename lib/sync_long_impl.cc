@@ -175,7 +175,7 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
 
         if (offset - nread + d_fftsize <= ninput && noutput_items >= 128 &&
             ((d_state == SYNC) ||
-             (d_state == COPY && (offset - nread - nconsumed < 64)))) {
+             (d_state == COPY && (offset - nread - nconsumed < 80)))) {
 
 #if 0
           checkCudaErrors(cudaMemcpyAsync(d_dev_in, &in[offset - nread],
@@ -246,10 +246,10 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
           }
 
           d_num_syms = 0;
-          std::cout << "tag0 " << d_num_syms << " "
-                    << nread + (offset - nread + max_index - 160 + 32 + 1)
-                    << " " << nwritten + nproduced << " " << nread << " "
-                    << offset << std::endl;
+          // std::cout << "tag0 " << d_num_syms << " "
+          //           << nread + (offset - nread + max_index - 160 + 32 + 1)
+          //           << " " << nwritten + nproduced << " " << nread << " "
+          //           << offset << std::endl;
           nproduced += 128;
 
           d_state = COPY;
