@@ -26,11 +26,11 @@ extern void exec_multiply_const(cuFloatComplex *in, cuFloatComplex *out,
 extern void exec_multiply_phase(cuFloatComplex *in, cuFloatComplex *out,
                                 float beta, int n, int grid_size,
                                 int block_size, cudaStream_t stream);
-extern void exec_calc_beta_err(cuFloatComplex *in, int8_t polarity,
+extern void exec_calc_beta_err(cuFloatComplex *in, float *polarity,
                                int current_symbol_index,
-                               cuFloatComplex *prev_pilots, float *beta,
-                               float *err, float bw, float freq, float *d_err,
-                               int n, int grid_size, int block_size,
+                               cuFloatComplex *last_symbol, float bw,
+                               float freq, float *beta, float *err, int n,
+                               int grid_size, int block_size,
                                cudaStream_t stream);
 
 namespace gr {
@@ -73,10 +73,20 @@ frame_equalizer_impl::frame_equalizer_impl(int algo, double freq, double bw)
   checkCudaErrors(cudaMalloc((void **)&d_dev_in, d_max_out_buffer));
   checkCudaErrors(cudaMalloc((void **)&d_dev_out, d_max_out_buffer));
   checkCudaErrors(
-      cudaMalloc((void **)&d_dev_prev_pilots, 4 * sizeof(cuFloatComplex)));
-  checkCudaErrors(cudaMalloc((void **)&d_dev_beta, sizeof(float)));
-  checkCudaErrors(cudaMalloc((void **)&d_dev_err, sizeof(float)));
-  checkCudaErrors(cudaMalloc((void **)&d_dev_d_err, sizeof(float)));
+      cudaMalloc((void **)&d_dev_last_symbol, 64 * sizeof(cuFloatComplex)));
+  checkCudaErrors(cudaMalloc((void **)&d_dev_beta,
+                             sizeof(float) * (d_max_out_buffer / (8 * 64))));
+  checkCudaErrors(cudaMalloc((void **)&d_dev_er,
+                             sizeof(float) * (d_max_out_buffer / (8 * 64))));
+
+  checkCudaErrors(cudaMalloc((void **)&d_dev_polarity, 127 * sizeof(float)));
+
+  for (int i = 0; i < 127; i++) {
+    fPOLARITY[i] = equalizer::base::POLARITY[i].real();
+  }
+
+  checkCudaErrors(cudaMemcpy(d_dev_polarity, fPOLARITY, 127 * sizeof(float),
+                             cudaMemcpyHostToDevice));
 
   cuFloatComplex *d_dev_prev_pilots;
   float *d_dev_beta;
@@ -129,7 +139,7 @@ int frame_equalizer_impl::general_work(int noutput_items,
   uint8_t *out = (uint8_t *)output_items[0];
 
   checkCudaErrors(cudaMemcpyAsync(d_dev_in, in,
-                                  sizeof(gr_complex) * noutput_items,
+                                  sizeof(gr_complex) * noutput_items*64,
                                   cudaMemcpyHostToDevice, d_stream));
 
   int i = 0;
@@ -172,13 +182,31 @@ int frame_equalizer_impl::general_work(int noutput_items,
         symbols_to_process = d_frame_symbols + 2;
       }
 
-      // auto gridSize = (symbols_to_process + d_block_size - 1) / d_block_size;
+      auto gridSize = (symbols_to_process + d_block_size - 1) / d_block_size;
 
-      // // prior to the tag, we need to finish up the previous frame
+      // // // prior to the tag, we need to finish up the previous frame
       // exec_freq_correction(
       //     (cuFloatComplex *)d_dev_in, (cuFloatComplex *)d_dev_in,
       //     2.0 * M_PI * d_current_symbol * 80 * (d_epsilon0 + d_er) / 64.0,
       //     -32, symbols_to_process, gridSize, d_block_size, d_stream);
+
+      exec_calc_beta_err((cuFloatComplex *)d_dev_in, d_dev_polarity,
+                         d_current_symbol, (cuFloatComplex *)d_dev_last_symbol,
+                         d_bw, d_freq, d_dev_beta, d_dev_er, symbols_to_process,
+                         gridSize, d_block_size, d_stream);
+
+      float host_beta[symbols_to_process];
+      float host_er[symbols_to_process];
+
+      cudaMemcpyAsync(host_beta, d_dev_beta, symbols_to_process*sizeof(float),cudaMemcpyDeviceToHost, d_stream);
+      cudaMemcpyAsync(host_er, d_dev_er, symbols_to_process*sizeof(float),cudaMemcpyDeviceToHost, d_stream);
+
+      cudaStreamSynchronize(d_stream);
+      // exec_calc_beta_err(cuFloatComplex *in, float *polarity,
+      //                         int current_symbol_index, cuFloatComplex
+      //                         *last_symbol, float bw, float freq, float
+      //                         *beta, float *err, int n, int grid_size, int
+      //                         block_size, cudaStream_t stream)
 
       for (int o = 0; o < symbols_to_process; o++) {
 
@@ -250,7 +278,7 @@ int frame_equalizer_impl::general_work(int noutput_items,
           d_er = (1 - alpha) * d_er + alpha * er;
         }
 
-        // do equalization
+        // // do equalization
         d_equalizer->equalize(current_symbol, d_current_symbol, symbols,
                               out + o * 48, d_frame_mod);
 
@@ -348,22 +376,22 @@ int frame_equalizer_impl::general_work(int noutput_items,
           decode_signal_field(out + o * 48);
           // if (decode_signal_field(out + o * 48)) {
 
-        //     pmt::pmt_t dict = pmt::make_dict();
-        //     dict = pmt::dict_add(dict, pmt::mp("frame_bytes"),
-        //                          pmt::from_uint64(d_frame_bytes));
-        //     dict = pmt::dict_add(dict, pmt::mp("encoding"),
-        //                          pmt::from_uint64(d_frame_encoding));
-        //     dict = pmt::dict_add(dict, pmt::mp("snr"),
-        //                          pmt::from_double(d_equalizer->get_snr()));
-        //     dict =
-        //         pmt::dict_add(dict, pmt::mp("freq"),
-        //         pmt::from_double(d_freq));
-        //     dict = pmt::dict_add(dict, pmt::mp("freq_offset"),
-        //                          pmt::from_double(d_freq_offset_from_synclong));
-        //     add_item_tag(0, nitems_written(0) + o,
-        //                  pmt::string_to_symbol("wifi_start"), dict,
-        //                  pmt::string_to_symbol(alias()));
-        //   }
+          //     pmt::pmt_t dict = pmt::make_dict();
+          //     dict = pmt::dict_add(dict, pmt::mp("frame_bytes"),
+          //                          pmt::from_uint64(d_frame_bytes));
+          //     dict = pmt::dict_add(dict, pmt::mp("encoding"),
+          //                          pmt::from_uint64(d_frame_encoding));
+          //     dict = pmt::dict_add(dict, pmt::mp("snr"),
+          //                          pmt::from_double(d_equalizer->get_snr()));
+          //     dict =
+          //         pmt::dict_add(dict, pmt::mp("freq"),
+          //         pmt::from_double(d_freq));
+          //     dict = pmt::dict_add(dict, pmt::mp("freq_offset"),
+          //                          pmt::from_double(d_freq_offset_from_synclong));
+          //     add_item_tag(0, nitems_written(0) + o,
+          //                  pmt::string_to_symbol("wifi_start"), dict,
+          //                  pmt::string_to_symbol(alias()));
+          //   }
         }
 
         if (d_current_symbol > 2) {

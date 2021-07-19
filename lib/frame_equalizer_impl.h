@@ -62,15 +62,16 @@ private:
   int d_min_grid_size;
   int d_block_size;
 
+  float fPOLARITY[127];
   cuFloatComplex* d_dev_in;
+  cuFloatComplex* d_dev_last_symbol;
+  float* d_dev_polarity;
+  float* d_dev_beta;
+  float* d_dev_er;
   cuFloatComplex* d_dev_out;
   // int8_t *d_dev_LONG;
   // int8_t *d_dev_POLARITY;
-  cuFloatComplex* d_dev_prev_pilots;
-  float *d_dev_beta;
-  float *d_dev_err;
-  float *d_dev_d_err;
-
+//   cuFloatComplex* d_dev_prev_pilots;
 
   static const int d_max_out_buffer = 65536;  // max bytes for output buffer
 
