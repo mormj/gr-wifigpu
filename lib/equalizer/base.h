@@ -32,8 +32,6 @@ public:
 	virtual double get_snr() = 0;
 
 	static const gr_complex POLARITY[127];
-
-protected:
 	static const gr_complex LONG[64];
 };
 

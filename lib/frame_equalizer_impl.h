@@ -63,12 +63,15 @@ private:
   int d_block_size;
 
   float fPOLARITY[127];
+  float fLONG[64];
   cuFloatComplex* d_dev_in;
   cuFloatComplex* d_dev_last_symbol;
   float* d_dev_polarity;
+  float* d_dev_long_training;
   float* d_dev_beta;
   float* d_dev_er;
-  cuFloatComplex* d_dev_out;
+  cuFloatComplex* d_dev_H;
+  uint8_t* d_dev_out;
   // int8_t *d_dev_LONG;
   // int8_t *d_dev_POLARITY;
 //   cuFloatComplex* d_dev_prev_pilots;

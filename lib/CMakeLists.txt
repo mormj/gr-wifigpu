@@ -26,6 +26,8 @@ if (CUDA_FOUND)
         multiply_const.cu
         presync.cu
         frame_equalizer.cu
+        equalize.cu
+        constellation.cu
         )
     set_target_properties(gnuradio-wifigpu-cu PROPERTIES 
         POSITION_INDEPENDENT_CODE ON
