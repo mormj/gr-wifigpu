@@ -23,13 +23,15 @@ __global__ void ls_freq_domain_equalization(cuFloatComplex *in,
       c = sample_index - 6;
     } else if (sample_index < 25) {
       c = sample_index - 7;
+    } else if (sample_index < 32) {
+        c = sample_index - 8;
     } else if (sample_index < 39) {
-      c = sample_index - 8;
-    } else {
       c = sample_index - 9;
+    } else {
+      c = sample_index - 10;
     }
 
-    out[i * 64 + c] = cuCdivf(in[i], H[i]);
+    out[symbol_index * 48 + c] = cuCdivf(in[i], H[sample_index]);
   }
 }
 
@@ -43,12 +45,12 @@ __global__ void ls_freq_domain_chanest(cuFloatComplex *in, float *training_seq,
 
   if (i < 64) {
 
-    if (sample_index != 32 && sample_index >= 6 && sample_index <= 58) {
+    // if (sample_index != 32 && sample_index >= 6 && sample_index <= 58) {
       H[sample_index] = cuCaddf(in[sample_index], in[64 + sample_index]);
       H[sample_index] = make_cuFloatComplex(
           H[sample_index].x / (training_seq[sample_index] * 2.0),
           H[sample_index].y / (training_seq[sample_index] * 2.0));
-    }
+    // }
   }
 }
 

@@ -130,7 +130,7 @@ void frame_equalizer_impl::set_algorithm(Equalizer algo) {
 
   switch (algo) {
 
-  case COMB:
+  // case COMB:
     // dout << "Comb" << std::endl;
     d_equalizer = new equalizer::comb();
     break;
@@ -210,30 +210,72 @@ int frame_equalizer_impl::general_work(int noutput_items,
         symbols_to_process = d_frame_symbols + 2;
       }
 
-      auto gridSize = (symbols_to_process + d_block_size - 1) / d_block_size;
-
       // // // prior to the tag, we need to finish up the previous frame
 
-      exec_correct_sampling_offset(
-          (cuFloatComplex *)d_dev_in, (cuFloatComplex *)d_dev_in,
-          d_current_symbol, 2.0 * M_PI * 80 * (d_epsilon0 + d_er),
-          64 * symbols_to_process, gridSize, d_block_size, d_stream);
+      {
+        auto gridSize =
+            (symbols_to_process * 64 + d_block_size - 1) / d_block_size;
 
-      exec_calc_beta_err((cuFloatComplex *)d_dev_in, d_dev_polarity,
-                         d_current_symbol, (cuFloatComplex *)d_dev_last_symbol,
-                         d_bw, d_freq, d_dev_beta, d_dev_er, symbols_to_process,
-                         gridSize, d_block_size, d_stream);
+        exec_correct_sampling_offset(
+            (cuFloatComplex *)d_dev_in, (cuFloatComplex *)d_dev_in,
+            d_current_symbol, 2.0 * M_PI * 80 * (d_epsilon0 + d_er),
+            64 * symbols_to_process, gridSize, d_block_size, d_stream);
+      }
 
-      exec_multiply_phase(
-          (cuFloatComplex *)d_dev_in, (cuFloatComplex *)d_dev_in, d_dev_beta,
-          symbols_to_process * 64, gridSize, d_block_size, d_stream);
+      {
+        auto gridSize =
+            (symbols_to_process + d_block_size - 1) / d_block_size;
+        exec_calc_beta_err(
+            (cuFloatComplex *)d_dev_in, d_dev_polarity, d_current_symbol,
+            (cuFloatComplex *)d_dev_last_symbol, d_bw, d_freq, d_dev_beta,
+            d_dev_er, symbols_to_process, gridSize, d_block_size, d_stream);
 
-      exec_ls_freq_domain_equalization(d_dev_in, d_dev_in, d_dev_H,
-                                       symbols_to_process * 64, gridSize,
-                                       d_block_size, d_stream);
+          float host_beta[symbols_to_process];
+          float host_er[symbols_to_process];
 
-      exec_bpsk_decision_maker(d_dev_in, d_dev_out, symbols_to_process * 48,
-                               gridSize, d_block_size, d_stream);
+          // cudaMemcpyAsync(host_beta, d_dev_beta, symbols_to_process * sizeof(float),
+          //                 cudaMemcpyDeviceToHost, d_stream);
+          // cudaMemcpyAsync(host_er, d_dev_er, symbols_to_process * sizeof(float),
+          //                 cudaMemcpyDeviceToHost, d_stream);
+          // cudaStreamSynchronize(d_stream);
+
+      }
+
+      checkCudaErrors(cudaMemcpyAsync(
+          d_dev_last_symbol, d_dev_in + 64 * (symbols_to_process - 1),
+          64 * sizeof(cuFloatComplex), cudaMemcpyDeviceToDevice));
+
+      {
+        auto gridSize =
+            (symbols_to_process * 64 + d_block_size - 1) / d_block_size;
+        exec_multiply_phase(
+            (cuFloatComplex *)d_dev_in, (cuFloatComplex *)d_dev_in, d_dev_beta,
+            symbols_to_process * 64, gridSize, d_block_size, d_stream);
+      }
+
+      {
+        auto gridSize =
+            (symbols_to_process * 64 + d_block_size - 1) / d_block_size;
+        exec_ls_freq_domain_equalization(d_dev_in, d_dev_in, d_dev_H,
+                                         symbols_to_process * 64, gridSize,
+                                         d_block_size, d_stream);
+
+        // gr_complex dbg_in[symbols_to_process*64];
+        //   cudaMemcpyAsync(dbg_in, d_dev_in, symbols_to_process * 64 * sizeof(gr_complex),
+        //                   cudaMemcpyDeviceToHost, d_stream);
+        // cudaStreamSynchronize(d_stream);
+      }
+
+      {
+        auto gridSize =
+            (symbols_to_process * 64 + d_block_size - 1) / d_block_size;
+        exec_bpsk_decision_maker(d_dev_in, d_dev_out, symbols_to_process * 48,
+                                 gridSize, d_block_size, d_stream);
+        // uint8_t dbg_out[symbols_to_process*48];
+        //   cudaMemcpyAsync(dbg_out, d_dev_out, symbols_to_process * 48 * sizeof(uint8_t),
+        //                   cudaMemcpyDeviceToHost, d_stream);
+        //   cudaStreamSynchronize(d_stream);
+      }
 
       checkCudaErrors(cudaMemcpyAsync(out, d_dev_out,
                                       symbols_to_process * sizeof(uint8_t) * 48,
@@ -317,6 +359,19 @@ int frame_equalizer_impl::general_work(int noutput_items,
                          d_dev_beta, d_dev_er, 3, gridSize, d_block_size,
                          d_stream);
 
+      checkCudaErrors(cudaMemcpyAsync(d_dev_last_symbol, d_dev_in + 64 * 2,
+                                      64 * sizeof(cuFloatComplex),
+                                      cudaMemcpyDeviceToDevice));
+
+      // float host_beta[3];
+      // float host_er[3];
+
+      // cudaMemcpyAsync(host_beta, d_dev_beta, 3 * sizeof(float),
+      //                 cudaMemcpyDeviceToHost, d_stream);
+      // cudaMemcpyAsync(host_er, d_dev_er, 3 * sizeof(float),
+      //                 cudaMemcpyDeviceToHost, d_stream);
+      // cudaStreamSynchronize(d_stream);
+
       exec_multiply_phase((cuFloatComplex *)d_dev_in,
                           (cuFloatComplex *)d_dev_in, d_dev_beta, 3 * 64,
                           gridSize, d_block_size, d_stream);
@@ -324,11 +379,16 @@ int frame_equalizer_impl::general_work(int noutput_items,
       exec_ls_freq_domain_chanest(d_dev_in, d_dev_long_training, d_dev_H,
                                   gridSize, d_block_size, d_stream);
 
+      // gr_complex host_H[64];
+
+      // cudaMemcpyAsync(host_H, d_dev_H, 64 * sizeof(gr_complex),
+      //                 cudaMemcpyDeviceToHost, d_stream);
+
       exec_ls_freq_domain_equalization(d_dev_in + 64 * 2, d_dev_in + 64 * 2,
                                        d_dev_H, 64, gridSize, d_block_size,
                                        d_stream);
 
-      exec_bpsk_decision_maker(d_dev_in, d_dev_out, 3 * 48, gridSize,
+      exec_bpsk_decision_maker(d_dev_in + 64 * 2, d_dev_out, 48, gridSize,
                                d_block_size, d_stream);
 
       static uint8_t signal_field[48];
