@@ -13,9 +13,6 @@ inputs:
 - label: in
   domain: stream
   dtype: complex
-- label: delayed
-  domain: stream
-  dtype: complex
 outputs:
 - label: out
   domain: stream

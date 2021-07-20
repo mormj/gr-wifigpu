@@ -37,7 +37,7 @@ private:
   int d_min_grid_size;
   int d_block_size;
 
-  static const int d_max_out_buffer = 65536;  // max bytes for output buffer
+  static const int d_max_out_buffer = 8*1024*1024;  // max bytes for output buffer
   cuFloatComplex* d_dev_in;
   cuFloatComplex* d_dev_out;
   cuFloatComplex* d_dev_abs;

@@ -134,8 +134,9 @@ int sync_short_impl::general_work(int noutput_items,
   //   out[o] = in[o + h] * exp(gr_complex(0, -d_freq_offset * (nwritten + o)));
   // }
 
+  auto gridSize = (noutput_items + d_block_size - 1) / d_block_size;
   exec_freq_correction(d_dev_in, d_dev_out, d_freq_offset,
-                          nwritten, noutput_items, d_min_grid_size, d_block_size,
+                          nwritten, noutput_items, gridSize, d_block_size,
                           d_stream);
 
   checkCudaErrors(cudaMemcpyAsync(out, d_dev_out,

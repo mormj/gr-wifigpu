@@ -50,13 +50,12 @@ presync::sptr presync::make() {
  * The private constructor
  */
 presync_impl::presync_impl()
-    : gr::block("presync", gr::io_signature::make(1, 1, sizeof(gr_complex),
-                                       cuda_buffer::type),
-                gr::io_signature::make3(3, 3, sizeof(gr_complex),
-                                        sizeof(gr_complex), sizeof(float),
-                                       cuda_buffer::type,
-                                       cuda_buffer::type,
-                                       cuda_buffer::type)) {
+    : gr::block(
+          "presync",
+          gr::io_signature::make(1, 1, sizeof(gr_complex), cuda_buffer::type),
+          gr::io_signature::make3(3, 3, sizeof(gr_complex), sizeof(gr_complex),
+                                  sizeof(float), cuda_buffer::type,
+                                  cuda_buffer::type, cuda_buffer::type)) {
   set_history(64);
 
   get_block_and_grid(&d_min_grid_size, &d_block_size);
@@ -114,28 +113,26 @@ int presync_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
 
   // std::cout << noutput_items << std::endl;
 
-//   checkCudaErrors(cudaMemcpyAsync(
-//       d_dev_in, in, sizeof(gr_complex) * (noutput_items + 63),
-//       cudaMemcpyHostToDevice, d_stream));
+  //   checkCudaErrors(cudaMemcpyAsync(
+  //       d_dev_in, in, sizeof(gr_complex) * (noutput_items + 63),
+  //       cudaMemcpyHostToDevice, d_stream));
 
-  exec_corr_abs((cuFloatComplex *)in, (cuFloatComplex *)d_dev_abs,
-                d_dev_cor, noutput_items, d_min_grid_size, d_block_size,
-                d_stream);
+  exec_corr_abs((cuFloatComplex *)in, (cuFloatComplex *)d_dev_abs, d_dev_cor,
+                noutput_items, d_min_grid_size, d_block_size, d_stream);
 
-  exec_mov_avg((cuFloatComplex *)d_dev_abs, d_dev_cor, (cuFloatComplex *)abs, cor, noutput_items,
-               d_min_grid_size, d_block_size, d_stream);
+  exec_mov_avg((cuFloatComplex *)d_dev_abs, d_dev_cor, (cuFloatComplex *)abs,
+               cor, noutput_items, d_min_grid_size, d_block_size, d_stream);
 
+  //   checkCudaErrors(cudaMemcpyAsync(abs, d_dev_abs2,
+  //                                   sizeof(gr_complex) * noutput_items,
+  //                                   cudaMemcpyDeviceToHost, d_stream));
 
-//   checkCudaErrors(cudaMemcpyAsync(abs, d_dev_abs2,
-//                                   sizeof(gr_complex) * noutput_items,
-//                                   cudaMemcpyDeviceToHost, d_stream));
+  //   checkCudaErrors(cudaMemcpyAsync(cor, d_dev_cor2, sizeof(float) *
+  //   noutput_items,
+  //                                   cudaMemcpyDeviceToHost, d_stream));
 
-//   checkCudaErrors(cudaMemcpyAsync(cor, d_dev_cor2, sizeof(float) * noutput_items,
-//                                   cudaMemcpyDeviceToHost, d_stream));
-
-//   memcpy(out, in + 47, noutput_items * sizeof(gr_complex));
-  checkCudaErrors(cudaMemcpyAsync(out, in,
-                                  sizeof(gr_complex) * noutput_items,
+  //   memcpy(out, in + 47, noutput_items * sizeof(gr_complex));
+  checkCudaErrors(cudaMemcpyAsync(out, in, sizeof(gr_complex) * noutput_items,
                                   cudaMemcpyDeviceToHost, d_stream));
 
   cudaStreamSynchronize(d_stream);
@@ -189,6 +186,8 @@ presync_impl::presync_impl()
       d_dev_abs2, 0, d_max_out_buffer + (64 + 16) * sizeof(gr_complex)));
   checkCudaErrors(
       cudaMemset(d_dev_cor2, 0, d_max_out_buffer + (64 + 16) * sizeof(float)));
+
+  set_output_multiple(1024 * 1024 / 8);
 }
 
 /*
@@ -209,25 +208,28 @@ int presync_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
   gr_complex *abs = (gr_complex *)output_items[1];
   float *cor = (float *)output_items[2];
 
-  // std::cout << noutput_items << std::endl;
+//   std::cout << noutput_items << std::endl;
 
-  checkCudaErrors(cudaMemcpyAsync(
-      d_dev_in, in, sizeof(gr_complex) * (noutput_items + 63),
-      cudaMemcpyHostToDevice, d_stream));
+  noutput_items = std::min(ninput_items[0],noutput_items);
 
+  checkCudaErrors(cudaMemcpyAsync(d_dev_in, in,
+                                  sizeof(gr_complex) * (noutput_items + 63),
+                                  cudaMemcpyHostToDevice, d_stream));
+
+  auto gridSize = (noutput_items + d_block_size - 1) / d_block_size;
   exec_corr_abs((cuFloatComplex *)d_dev_in, (cuFloatComplex *)d_dev_abs,
-                d_dev_cor, noutput_items, d_min_grid_size, d_block_size,
-                d_stream);
-
-  exec_mov_avg((cuFloatComplex *)d_dev_abs, d_dev_cor, (cuFloatComplex *)d_dev_abs2, d_dev_cor2, noutput_items,
-               d_min_grid_size, d_block_size, d_stream);
-
+                d_dev_cor, noutput_items, gridSize, d_block_size, d_stream);
+  
+  exec_mov_avg((cuFloatComplex *)d_dev_abs, d_dev_cor,
+               (cuFloatComplex *)d_dev_abs2, d_dev_cor2, noutput_items,
+               gridSize, d_block_size, d_stream);
 
   checkCudaErrors(cudaMemcpyAsync(abs, d_dev_abs2,
                                   sizeof(gr_complex) * noutput_items,
                                   cudaMemcpyDeviceToHost, d_stream));
 
-  checkCudaErrors(cudaMemcpyAsync(cor, d_dev_cor2, sizeof(float) * noutput_items,
+  checkCudaErrors(cudaMemcpyAsync(cor, d_dev_cor2,
+                                  sizeof(float) * noutput_items,
                                   cudaMemcpyDeviceToHost, d_stream));
 
   memcpy(out, in + 47, noutput_items * sizeof(gr_complex));
@@ -248,8 +250,6 @@ int presync_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
 }
 
 #endif
-
-
 
 } /* namespace wifigpu */
 } /* namespace gr */
