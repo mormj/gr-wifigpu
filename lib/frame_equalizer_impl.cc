@@ -363,14 +363,14 @@ int frame_equalizer_impl::general_work(int noutput_items,
                                       64 * sizeof(cuFloatComplex),
                                       cudaMemcpyDeviceToDevice));
 
-      // float host_beta[3];
-      // float host_er[3];
+      float host_beta[3];
+      float host_er[3];
 
-      // cudaMemcpyAsync(host_beta, d_dev_beta, 3 * sizeof(float),
-      //                 cudaMemcpyDeviceToHost, d_stream);
-      // cudaMemcpyAsync(host_er, d_dev_er, 3 * sizeof(float),
-      //                 cudaMemcpyDeviceToHost, d_stream);
-      // cudaStreamSynchronize(d_stream);
+      cudaMemcpyAsync(host_beta, d_dev_beta, 3 * sizeof(float),
+                      cudaMemcpyDeviceToHost, d_stream);
+      cudaMemcpyAsync(host_er, d_dev_er, 3 * sizeof(float),
+                      cudaMemcpyDeviceToHost, d_stream);
+      cudaStreamSynchronize(d_stream);
 
       exec_multiply_phase((cuFloatComplex *)d_dev_in,
                           (cuFloatComplex *)d_dev_in, d_dev_beta, 3 * 64,
@@ -379,10 +379,10 @@ int frame_equalizer_impl::general_work(int noutput_items,
       exec_ls_freq_domain_chanest(d_dev_in, d_dev_long_training, d_dev_H,
                                   gridSize, d_block_size, d_stream);
 
-      // gr_complex host_H[64];
+      gr_complex host_H[64];
 
-      // cudaMemcpyAsync(host_H, d_dev_H, 64 * sizeof(gr_complex),
-      //                 cudaMemcpyDeviceToHost, d_stream);
+      cudaMemcpyAsync(host_H, d_dev_H, 64 * sizeof(gr_complex),
+                      cudaMemcpyDeviceToHost, d_stream);
 
       exec_ls_freq_domain_equalization(d_dev_in + 64 * 2, d_dev_in + 64 * 2,
                                        d_dev_H, 64, gridSize, d_block_size,
