@@ -44,17 +44,19 @@ private:
   int d_min_grid_size;
   int d_block_size;
 
+  std::vector<float> d_host_cor;
+	std::vector<gr_complex> d_host_abs;
+
   std::vector<uint8_t> above_threshold;
   std::vector<uint8_t> accum;
 
   static const int MIN_GAP = 480;
   static const int MAX_SAMPLES = 540 * 80;
 
-  static const int d_max_out_buffer = 65536;  // max bytes for output buffer
+  static const int d_max_out_buffer = 8*1024*1024;  // max bytes for output buffer
 
 public:
   sync_short_impl(float threshold, int min_plateau);
-  ~sync_short_impl();
 
   void insert_tag(uint64_t item, double freq_offset, uint64_t input_item);
 

@@ -47,7 +47,6 @@ private:
 
 public:
   presync_impl();
-  ~presync_impl();
 
   // Where all the action really happens
   void forecast(int noutput_items, gr_vector_int &ninput_items_required);
