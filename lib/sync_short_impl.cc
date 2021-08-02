@@ -41,7 +41,7 @@ sync_short::sptr sync_short::make(float threshold, int min_plateau) {
 
 void sync_short_impl::forecast(int noutput_items,
                                gr_vector_int &ninput_items_required) {
-  ninput_items_required[0] = noutput_items;
+  ninput_items_required[0] = noutput_items + 4;
 }
 
 #if 1
@@ -59,6 +59,8 @@ sync_short_impl::sync_short_impl(float threshold, int min_plateau)
 
   above_threshold.resize(8192);
   accum.resize(8192);
+  d_host_cor.resize(8192);
+  d_host_abs.resize(8192);
 
   // Temporary Buffers
   checkCudaErrors(cudaMalloc(
@@ -86,9 +88,10 @@ int sync_short_impl::general_work(int noutput_items,
   // uint8_t *out_accum = (uint8_t *)output_items[2];
 
   int h = history() - 1;
-  if (noutput_items > above_threshold.size()) {
+  if (noutput_items+h > above_threshold.size()) {
     above_threshold.resize(noutput_items + h);
     accum.resize(noutput_items);
+       std::cout << "resizing to " << noutput_items+h << std::endl;
         d_host_cor.resize(noutput_items+h);
         d_host_abs.resize(noutput_items+h);
   }
