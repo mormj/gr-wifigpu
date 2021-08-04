@@ -41,7 +41,7 @@ sync_short::sptr sync_short::make(float threshold, int min_plateau) {
 
 void sync_short_impl::forecast(int noutput_items,
                                gr_vector_int &ninput_items_required) {
-  ninput_items_required[0] = noutput_items + 4;
+  ninput_items_required[0] = noutput_items + d_min_plateau;
 }
 
 #if 1

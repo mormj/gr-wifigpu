@@ -28,6 +28,7 @@ if (CUDA_FOUND)
         frame_equalizer.cu
         equalize.cu
         constellation.cu
+        remove_cp.cu
         )
     set_target_properties(gnuradio-wifigpu-cu PROPERTIES 
         POSITION_INDEPENDENT_CODE ON
@@ -48,6 +49,7 @@ endif()
 ###############################################################################
 # gr-cuda_buffer is required for the CUDA blocks
 ###############################################################################
+find_package(cusp REQUIRED)
 find_package(cuda_buffer REQUIRED)
 check_include_file("xmmintrin.h" SSE2_SUPPORTED)
 
@@ -71,6 +73,7 @@ list(APPEND wifigpu_sources
     utils.cc
     constellations_impl.cc
     viterbi_decoder/base.cc
+    gpu_channelizer_impl.cc
 )
 
 # use SSE2 optimized viterbi implementation if SSE2 is enabled
@@ -94,7 +97,8 @@ add_library(gnuradio-wifigpu SHARED ${wifigpu_sources})
 target_link_libraries(gnuradio-wifigpu PUBLIC gnuradio::gnuradio-runtime gnuradio::gnuradio-digital
     ${CUDA_CUDART_LIBRARY} 
     ${CUDA_CUFFT_LIBRARIES} 
-    ${CUDA_BUFFER_LIBRARIES})
+    ${CUDA_BUFFER_LIBRARIES}
+    ${CUSP_LIBRARIES})
 if (CUDA_FOUND)
 target_link_libraries(gnuradio-wifigpu PRIVATE 
     gnuradio-wifigpu-cu
@@ -106,6 +110,7 @@ target_include_directories(gnuradio-wifigpu
     PUBLIC $<INSTALL_INTERFACE:include>
     ${CUDA_INCLUDE_DIRS} 
     ${CUDA_BUFFER_INCLUDE_DIRS}
+    ${CUSP_INCLUDE_DIRS}
   )
 set_target_properties(gnuradio-wifigpu PROPERTIES DEFINE_SYMBOL "gnuradio_wifigpu_EXPORTS")
 
