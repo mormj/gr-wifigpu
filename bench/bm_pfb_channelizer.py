@@ -60,9 +60,9 @@ class benchmark_copy(gr.top_block):
         # Connections
         ##################################################
 
-        # for ii in range(nchans):
-        #     self.connect((self.channelizer, ii), (self.nsnk, ii))
-        self.connect(self.channelizer, self.nsnk)
+        for ii in range(nchans):
+            self.connect((self.channelizer, ii), (self.nsnk, ii))
+        # self.connect(self.channelizer, self.nsnk)
         self.connect((self.hd, 0), (self.channelizer, 0))
         self.connect((self.nsrc, 0), (self.hd, 0))
 

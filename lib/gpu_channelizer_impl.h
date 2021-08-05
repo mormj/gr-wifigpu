@@ -10,6 +10,7 @@
 
 #include <wifigpu/gpu_channelizer.h>
 #include <cusp/channelizer.cuh>
+#include <cusp/deinterleave.cuh>
 
 namespace gr {
 namespace wifigpu {
@@ -18,8 +19,14 @@ class gpu_channelizer_impl : public gpu_channelizer {
 private:
   size_t d_nchans;
   size_t d_taps;
+  size_t d_overlap;
+
+  void *d_dev_buf;
+  void *d_dev_tail;
+  cudaStream_t d_stream;
 
   std::shared_ptr<cusp::channelizer<gr_complex>> p_channelizer;
+  std::shared_ptr<cusp::deinterleave> p_deinterleaver;
 
 public:
   gpu_channelizer_impl(size_t nchans, const std::vector<float>& taps);
