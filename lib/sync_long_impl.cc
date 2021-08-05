@@ -22,6 +22,8 @@
 #include "config.h"
 #endif
 
+#define USE_CUSTOM_BUFFERS 0
+
 #include "sync_long_impl.h"
 #include <cuda_buffer/cuda_buffer.h>
 #include <gnuradio/io_signature.h>
@@ -50,44 +52,47 @@ sync_long::sptr sync_long::make(unsigned int sync_length) {
 sync_long_impl::sync_long_impl(unsigned int sync_length)
     : gr::block(
           "sync_long",
-          // gr::io_signature::make(1, 1, sizeof(gr_complex), cuda_buffer::type),
-          // gr::io_signature::make(1, 1, sizeof(gr_complex), cuda_buffer::type)),
+#if USE_CUSTOM_BUFFERS
+          gr::io_signature::make(1, 1, sizeof(gr_complex), cuda_buffer::type),
+          gr::io_signature::make(1, 1, sizeof(gr_complex), cuda_buffer::type)),
+#else
           gr::io_signature::make(1, 1, sizeof(gr_complex)),
           gr::io_signature::make(1, 1, sizeof(gr_complex))),
+#endif
       d_sync_length(sync_length) {
   // set_output_multiple(d_fftsize); // make sure the fft size is sufficient for
   //                                 // freq domain convolution
 
-    cudaStreamCreate(&d_stream);
+  cudaStreamCreate(&d_stream);
 
-    checkCudaErrors(cufftCreate(&d_plan));
-    checkCudaErrors(cufftSetStream(d_plan, d_stream));
+  checkCudaErrors(cufftCreate(&d_plan));
+  checkCudaErrors(cufftSetStream(d_plan, d_stream));
 
-    size_t workSize;
-    checkCudaErrors(cufftMakePlanMany(
-        d_plan, 1, &d_fftsize, NULL, 1, 1, NULL, 1, 1, CUFFT_C2C, 1, &workSize));
+  size_t workSize;
+  checkCudaErrors(cufftMakePlanMany(d_plan, 1, &d_fftsize, NULL, 1, 1, NULL, 1,
+                                    1, CUFFT_C2C, 1, &workSize));
 
-    checkCudaErrors(
-        cudaMalloc((void**)&d_dev_training_freq, sizeof(cufftComplex) * d_fftsize * 1));
-    checkCudaErrors(cudaMalloc((void**)&d_dev_in, sizeof(cufftComplex) * d_fftsize * 1));
+  checkCudaErrors(cudaMalloc((void **)&d_dev_training_freq,
+                             sizeof(cufftComplex) * d_fftsize * 1));
+  checkCudaErrors(
+      cudaMalloc((void **)&d_dev_in, sizeof(cufftComplex) * d_fftsize * 1));
 
-    checkCudaErrors(cudaMemset(d_dev_training_freq, 0, d_fftsize * sizeof(cufftComplex)));
+  checkCudaErrors(
+      cudaMemset(d_dev_training_freq, 0, d_fftsize * sizeof(cufftComplex)));
 
-    checkCudaErrors(cudaMemcpy(d_dev_training_freq,
-                               &LONG[0],
-                               64 * sizeof(cufftComplex),
-                               cudaMemcpyHostToDevice));
-    checkCudaErrors(cudaMemcpy(d_dev_training_freq + 64,
-                               &LONG[0],
-                               64 * sizeof(cufftComplex),
-                               cudaMemcpyHostToDevice));
+  checkCudaErrors(cudaMemcpy(d_dev_training_freq, &LONG[0],
+                             64 * sizeof(cufftComplex),
+                             cudaMemcpyHostToDevice));
+  checkCudaErrors(cudaMemcpy(d_dev_training_freq + 64, &LONG[0],
+                             64 * sizeof(cufftComplex),
+                             cudaMemcpyHostToDevice));
 
-    checkCudaErrors(
-        cufftExecC2C(d_plan, d_dev_training_freq, d_dev_training_freq, CUFFT_FORWARD));
-    cudaStreamSynchronize(d_stream);
+  checkCudaErrors(cufftExecC2C(d_plan, d_dev_training_freq, d_dev_training_freq,
+                               CUFFT_FORWARD));
+  cudaStreamSynchronize(d_stream);
 
-    // get_block_and_grid_multiply(&d_min_grid_size, &d_block_size);
-    d_block_size = 1024;
+  // get_block_and_grid_multiply(&d_min_grid_size, &d_block_size);
+  d_block_size = 1024;
 
   set_tag_propagation_policy(TPP_DONT);
 
@@ -141,6 +146,15 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
 
     if (nconsumed) {
 
+#if USE_CUSTOM_BUFFERS
+      auto nsyms = std::min(nconsumed / 80, noutput / 64);
+      auto gridSize = (80 * nsyms + d_block_size - 1) / d_block_size;
+      exec_remove_cp((cuFloatComplex *)in, (cuFloatComplex *)out, 80, 16,
+                     80 * nsyms, gridSize, d_block_size, d_stream);
+      cudaStreamSynchronize(d_stream);
+      consume_each(80 * nsyms);
+      return 64 * nsyms;
+#else
       int i = 0;
       int o = 0;
       while (i + 80 <= nconsumed && o + 64 <= noutput_items) {
@@ -153,14 +167,11 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
 
       consume_each(i);
       return o;
+#endif
 
-      // auto nsyms = std::min(nconsumed / 80, noutput / 64);
-      // auto gridSize = (80 * nsyms + d_block_size - 1) / d_block_size;
-      // exec_remove_cp((cuFloatComplex *)in, (cuFloatComplex *)out, 80, 16,
-      //                80 * nsyms, gridSize, d_block_size, d_stream);
-      // cudaStreamSynchronize(d_stream);
-      // consume_each(80 * nsyms);
-      // return 64 * nsyms;
+    } else {
+      consume_each(0);
+      return 0;
     }
   } else { // WAITING_FOR_TAG
 
@@ -171,16 +182,17 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
 
       if (offset - nread + d_fftsize <= ninput && noutput >= 128) {
 
+#if USE_CUSTOM_BUFFERS
+        checkCudaErrors(cufftExecC2C(d_plan,
+                                     (cufftComplex *)&in[offset - nread],
+                                     d_dev_in, CUFFT_FORWARD));
+#else
         checkCudaErrors(cudaMemcpyAsync(d_dev_in, &in[offset - nread],
                                         d_fftsize * sizeof(cufftComplex),
                                         cudaMemcpyHostToDevice, d_stream));
-
-        // checkCudaErrors(cufftExecC2C(d_plan,
-        //                              (cufftComplex *)&in[offset - nread],
-        //                              d_dev_in, CUFFT_FORWARD));
-        checkCudaErrors(cufftExecC2C(d_plan,
-                                     d_dev_in,
-                                     d_dev_in, CUFFT_FORWARD));
+        checkCudaErrors(
+            cufftExecC2C(d_plan, d_dev_in, d_dev_in, CUFFT_FORWARD));
+#endif
 
         auto gridSize = (d_fftsize + d_block_size - 1) / d_block_size;
         exec_multiply_kernel_ccc(d_dev_in, d_dev_training_freq, d_dev_in,
@@ -216,14 +228,25 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
         // size_t max_index = 297;
 
         // Copy the LTF symbols
-        // std::cout << max_index << std::endl;
-        memcpy(out + nproduced,
-               in + (offset - nread + max_index - 160 + 32 + 1),
-               sizeof(gr_complex) * 128);
+        // offset and nread should always be equal
+        size_t copy_index = 0;
+        if (max_index > (160 - 32 - 1)) {
+          copy_index = max_index - 160 + 32 + 1;
+        }
 
-        // checkCudaErrors(cudaMemcpyAsync(
-        //     out + nproduced, in + (offset - nread + max_index - 160 + 32 + 1),
-        //     sizeof(gr_complex) * 128, cudaMemcpyDeviceToHost, d_stream));
+        // std::cout << max_index << " / " << nread << " / " << offset << " / "
+        // << (offset - nread + copy_index) << std::endl;
+
+#if USE_CUSTOM_BUFFERS
+
+        checkCudaErrors(cudaMemcpyAsync(
+            out + nproduced, in + (offset - nread + copy_index),
+            sizeof(gr_complex) * 128, cudaMemcpyDeviceToDevice, d_stream));
+        cudaStreamSynchronize(d_stream);
+#else
+        memcpy(out + nproduced, in + (offset - nread + copy_index),
+               sizeof(gr_complex) * 128);
+#endif
 
         const pmt::pmt_t key = pmt::string_to_symbol("wifi_start");
         const pmt::pmt_t value = // pmt::from_long(max_index);
@@ -234,9 +257,8 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
         d_num_syms = 0;
         nproduced += 128;
         d_state = FINISH_LAST_FRAME;
-        nconsumed = (offset - nread + max_index - 160 + 32 + 128 + 1);
+        nconsumed = (offset - nread + copy_index + 128);
 
-        cudaStreamSynchronize(d_stream);
         consume_each(nconsumed);
         return nproduced;
       } else {
