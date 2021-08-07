@@ -152,8 +152,26 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
       exec_remove_cp((cuFloatComplex *)in, (cuFloatComplex *)out, 80, 16,
                      80 * nsyms, gridSize, d_block_size, d_stream);
       cudaStreamSynchronize(d_stream);
+
+      // gr_complex host_out[100];
+      // cudaMemcpy(host_out, out, 100*sizeof(gr_complex), cudaMemcpyDeviceToHost);
+
       consume_each(80 * nsyms);
       return 64 * nsyms;
+
+      // int i = 0;
+      // int o = 0;
+      // while (i + 80 <= nconsumed && o + 64 <= noutput_items) {
+      //   cudaMemcpy(out + o, in + i + 16,
+      //          sizeof(gr_complex) * 64, cudaMemcpyDeviceToDevice); // throw away the cyclic prefix
+
+      //   i += 80;
+      //   o += 64;
+      // }
+
+      // consume_each(i);
+      // return o;
+
 #else
       int i = 0;
       int o = 0;
@@ -164,6 +182,11 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
         i += 80;
         o += 64;
       }
+
+            // FILE *pFile;
+            // pFile = fopen("/tmp/gr_sync_long.fc32", "wb");
+            // fwrite(out, sizeof(gr_complex), o, pFile);
+
 
       consume_each(i);
       return o;
