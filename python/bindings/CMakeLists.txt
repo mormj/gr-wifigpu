@@ -34,7 +34,8 @@ list(APPEND wifigpu_python_files
     sync_long_python.cc
     frame_equalizer_python.cc
     # gpu_channelizer_python.cc
-    packetize_frame_python.cc python_bindings.cc)
+    packetize_frame_python.cc
+    tp_decode_mac_python.cc python_bindings.cc)
 
 GR_PYBIND_MAKE_OOT(wifigpu 
    ../..

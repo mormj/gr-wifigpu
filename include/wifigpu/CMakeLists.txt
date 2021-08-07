@@ -28,5 +28,6 @@ install(FILES
     sync_long.h
     frame_equalizer.h
     gpu_channelizer.h
-    packetize_frame.h DESTINATION include/wifigpu
+    packetize_frame.h
+    tp_decode_mac.h DESTINATION include/wifigpu
 )

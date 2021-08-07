@@ -27,6 +27,7 @@ void bind_sync_long(py::module& m);
     void bind_frame_equalizer(py::module& m);
     // void bind_gpu_channelizer(py::module& m);
     void bind_packetize_frame(py::module& m);
+    void bind_tp_decode_mac(py::module& m);
 // ) END BINDING_FUNCTION_PROTOTYPES
 
 
@@ -61,5 +62,6 @@ PYBIND11_MODULE(wifigpu_python, m)
     bind_frame_equalizer(m);
     // bind_gpu_channelizer(m);
     bind_packetize_frame(m);
+    bind_tp_decode_mac(m);
     // ) END BINDING_FUNCTION_CALLS
 }

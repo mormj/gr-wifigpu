@@ -23,5 +23,6 @@ install(FILES
     wifigpu_sync_long.block.yml
     wifigpu_frame_equalizer.block.yml
     wifigpu_gpu_channelizer.block.yml
-    wifigpu_packetize_frame.block.yml DESTINATION share/gnuradio/grc/blocks
+    wifigpu_packetize_frame.block.yml
+    wifigpu_tp_decode_mac.block.yml DESTINATION share/gnuradio/grc/blocks
 )

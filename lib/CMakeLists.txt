@@ -75,6 +75,7 @@ list(APPEND wifigpu_sources
     viterbi_decoder/base.cc
     # gpu_channelizer_impl.cc
     packetize_frame_impl.cc
+    tp_decode_mac_impl.cc
 )
 
 # use SSE2 optimized viterbi implementation if SSE2 is enabled
