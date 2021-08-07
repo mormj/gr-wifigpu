@@ -80,7 +80,7 @@ packetize_frame_impl::~packetize_frame_impl() {
 
 void packetize_frame_impl::forecast(int noutput_items,
                                     gr_vector_int &ninput_items_required) {
-  ninput_items_required[0] = noutput_items;
+  ninput_items_required[0] = noutput_items+3;
 }
 
 int packetize_frame_impl::general_work(int noutput_items,
@@ -182,6 +182,7 @@ int packetize_frame_impl::general_work(int noutput_items,
         d_current_symbol++;
       }
 
+      
       if (decode_signal_field(signal_field)) {
 
         // std::cout << d_frame_bytes << " / " << d_frame_encoding << std::endl;
