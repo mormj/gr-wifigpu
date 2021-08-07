@@ -153,6 +153,7 @@ int packetize_frame_impl::general_work(int noutput_items,
       if (d_pdu) {
         // std::cout << "publish frame" << std::endl;
         message_port_pub(pmt::mp("pdus"), d_pdu);
+        d_pdu = nullptr;
       }
 
       d_current_symbol = 0;
@@ -207,10 +208,10 @@ int packetize_frame_impl::general_work(int noutput_items,
 
         d_state = FINISH_LAST_FRAME;
 
-        consume_each(3);
+        consume_each(frame_start+3);
         return 0;
       } else {
-        consume_each(3);
+        consume_each(frame_start+3);
         d_state = WAITING_FOR_TAG;
         return 0;
       }
