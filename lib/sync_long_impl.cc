@@ -148,67 +148,71 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
       auto max_produce = noutput - nproduced;
       if (tag_idx < tags.size()) {
         // only consume up to the next tag
-        auto max_consume = tags[tag_idx].offset - (nread + nconsumed);
+        max_consume = tags[tag_idx].offset - (nread + nconsumed);
+        if (max_consume < 80 ||
+            max_produce <
+                64) { // need an entire OFDM symbol to do anything here
+          nconsumed = tags[tag_idx].offset - nread;
+          d_state = WAITING_FOR_TAG;
+          continue;
+        }
       }
-      if (max_consume < 80 || max_produce < 64) { // need an entire OFDM symbol to do anything here
-        nconsumed = tags[tag_idx].offset;
-        d_state = WAITING_FOR_TAG;
-        continue;
+      else{ // no more tags
+        if (max_consume < 80 ||
+            max_produce < 64) { // need an entire OFDM symbol to do anything here
+          nconsumed += max_consume;
+          break;
+        }
       }
 
-      if (max_consume) {
+
 
 #if USE_CUSTOM_BUFFERS
-        auto nsyms = std::min(nconsumed / 80, noutput / 64);
-        auto gridSize = (80 * nsyms + d_block_size - 1) / d_block_size;
-        exec_remove_cp((cuFloatComplex *)in, (cuFloatComplex *)out, 80, 16,
-                       80 * nsyms, gridSize, d_block_size, d_stream);
-        cudaStreamSynchronize(d_stream);
+      auto nsyms = std::min(nconsumed / 80, noutput / 64);
+      auto gridSize = (80 * nsyms + d_block_size - 1) / d_block_size;
+      exec_remove_cp((cuFloatComplex *)in, (cuFloatComplex *)out, 80, 16,
+                     80 * nsyms, gridSize, d_block_size, d_stream);
+      cudaStreamSynchronize(d_stream);
 
-        // gr_complex host_out[100];
-        // cudaMemcpy(host_out, out, 100*sizeof(gr_complex),
-        // cudaMemcpyDeviceToHost);
+      // gr_complex host_out[100];
+      // cudaMemcpy(host_out, out, 100*sizeof(gr_complex),
+      // cudaMemcpyDeviceToHost);
 
-        consume_each(80 * nsyms);
-        return 64 * nsyms;
+      consume_each(80 * nsyms);
+      return 64 * nsyms;
 
-        // int i = 0;
-        // int o = 0;
-        // while (i + 80 <= nconsumed && o + 64 <= noutput_items) {
-        //   cudaMemcpy(out + o, in + i + 16,
-        //          sizeof(gr_complex) * 64, cudaMemcpyDeviceToDevice); // throw
-        //          away the cyclic prefix
+      // int i = 0;
+      // int o = 0;
+      // while (i + 80 <= nconsumed && o + 64 <= noutput_items) {
+      //   cudaMemcpy(out + o, in + i + 16,
+      //          sizeof(gr_complex) * 64, cudaMemcpyDeviceToDevice); // throw
+      //          away the cyclic prefix
 
-        //   i += 80;
-        //   o += 64;
-        // }
+      //   i += 80;
+      //   o += 64;
+      // }
 
-        // consume_each(i);
-        // return o;
+      // consume_each(i);
+      // return o;
 
 #else
-        int i = 0;
-        int o = 0;
-        while (i + 80 <= max_consume && o + 64 <= max_produce) {
-          memcpy(out + o, in + i + 16,
-                 sizeof(gr_complex) * 64); // throw away the cyclic prefix
+      int i = 0;
+      int o = 0;
+      while (i + 80 <= max_consume && o + 64 <= max_produce) {
+        memcpy(out + o, in + i + 16,
+               sizeof(gr_complex) * 64); // throw away the cyclic prefix
 
-          i += 80;
-          o += 64;
-        }
+        i += 80;
+        o += 64;
+      }
 
-        // FILE *pFile;
-        // pFile = fopen("/tmp/gr_sync_long.fc32", "wb");
-        // fwrite(out, sizeof(gr_complex), o, pFile);
-        nconsumed += i;
-        nproduced += o;
+      // FILE *pFile;
+      // pFile = fopen("/tmp/gr_sync_long.fc32", "wb");
+      // fwrite(out, sizeof(gr_complex), o, pFile);
+      nconsumed += i;
+      nproduced += o;
 #endif
 
-      } else {
-        // There are no samples left in the input buffer to try and finish the
-        // frame
-        break;
-      }
     } else { // WAITING_FOR_TAG
 
       if (tag_idx < tags.size()) {
