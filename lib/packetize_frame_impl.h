@@ -69,6 +69,8 @@ private:
 
 static const int interleaver_pattern[48];
 
+  int packet_cnt = 0;
+
 public:
  enum { WAITING_FOR_TAG, FINISH_LAST_FRAME } d_state = WAITING_FOR_TAG;
   void set_algorithm(Equalizer algo);

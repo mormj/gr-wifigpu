@@ -68,13 +68,13 @@ public:
 
 
     // Insert MAC Decode code here
-    std::cout << "Threadpool got new burst" << std::endl;
+    // std::cout << "Threadpool got new burst" << std::endl;
 
     // repackage as pmt and place on output queue
     // pmt::pmt_t vecpmt(pmt::init_c32vector(nproduced, &buffer1[0]));
     // pmt::pmt_t pdu(pmt::cons(pmt::PMT_NIL, vecpmt));
-    pmt::pmt_t pdu = nullptr;
-    
+    pmt::pmt_t pdu = pmt::PMT_NIL;
+
     this->packet_cnt++;
     // std::cout << "worker: " << packet_cnt << std::endl;
 

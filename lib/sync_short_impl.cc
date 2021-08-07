@@ -135,6 +135,11 @@ int sync_short_impl::general_work(int noutput_items,
         d_last_tag_location = nread + i;
         d_freq_offset = arg(d_host_abs[i]) / 16;
         insert_tag(nwritten + i, d_freq_offset, nread + i);
+        packet_cnt++;
+        if (packet_cnt % 1000 == 0)
+        {
+          std::cout << "sync_short: " << packet_cnt << std::endl;
+        }
       }
 
     } else {
@@ -246,6 +251,7 @@ int sync_short_impl::general_work(int noutput_items,
         d_last_tag_location = nread + i;
         d_freq_offset = arg(in_abs[i]) / 16;
         insert_tag(nwritten + i, d_freq_offset, nread + i);
+        packet_cnt++;
       }
 
     } else {

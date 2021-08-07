@@ -129,169 +129,191 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
   const uint64_t nwritten = nitems_written(0);
   get_tags_in_range(tags, 0, nread, nread + ninput);
 
-  int nconsumed = ninput;
+  // std::cout << tags.size() << std::endl;
+
+  int nconsumed = 0;
   int nproduced = 0;
   auto noutput = noutput_items;
 
-  if (d_state == FINISH_LAST_FRAME) {
-    if (tags.size()) {
-      // only consume up to the next tag
-      nconsumed = tags[0].offset - nread;
-      if (nconsumed < 80) {
+  size_t tag_idx = 0;
+  while (true) {
+    auto tag = &tags[tag_idx];
+    tag_t *next_tag = nullptr;
+    if (tag_idx < tags.size() - 1) {
+      next_tag = &tags[tag_idx + 1];
+    }
+
+    if (d_state == FINISH_LAST_FRAME) {
+      auto max_consume = ninput - nconsumed;
+      auto max_produce = noutput - nproduced;
+      if (tag_idx < tags.size()) {
+        // only consume up to the next tag
+        auto max_consume = tags[tag_idx].offset - (nread + nconsumed);
+      }
+      if (max_consume < 80 || max_produce < 64) { // need an entire OFDM symbol to do anything here
+        nconsumed = tags[tag_idx].offset;
         d_state = WAITING_FOR_TAG;
-        consume_each(nconsumed);
-        return 0;
-      }
-    }
-
-    if (nconsumed) {
-
-#if USE_CUSTOM_BUFFERS
-      auto nsyms = std::min(nconsumed / 80, noutput / 64);
-      auto gridSize = (80 * nsyms + d_block_size - 1) / d_block_size;
-      exec_remove_cp((cuFloatComplex *)in, (cuFloatComplex *)out, 80, 16,
-                     80 * nsyms, gridSize, d_block_size, d_stream);
-      cudaStreamSynchronize(d_stream);
-
-      // gr_complex host_out[100];
-      // cudaMemcpy(host_out, out, 100*sizeof(gr_complex), cudaMemcpyDeviceToHost);
-
-      consume_each(80 * nsyms);
-      return 64 * nsyms;
-
-      // int i = 0;
-      // int o = 0;
-      // while (i + 80 <= nconsumed && o + 64 <= noutput_items) {
-      //   cudaMemcpy(out + o, in + i + 16,
-      //          sizeof(gr_complex) * 64, cudaMemcpyDeviceToDevice); // throw away the cyclic prefix
-
-      //   i += 80;
-      //   o += 64;
-      // }
-
-      // consume_each(i);
-      // return o;
-
-#else
-      int i = 0;
-      int o = 0;
-      while (i + 80 <= nconsumed && o + 64 <= noutput_items) {
-        memcpy(out + o, in + i + 16,
-               sizeof(gr_complex) * 64); // throw away the cyclic prefix
-
-        i += 80;
-        o += 64;
+        continue;
       }
 
-            // FILE *pFile;
-            // pFile = fopen("/tmp/gr_sync_long.fc32", "wb");
-            // fwrite(out, sizeof(gr_complex), o, pFile);
-
-
-      consume_each(i);
-      return o;
-#endif
-
-    } else {
-      consume_each(0);
-      return 0;
-    }
-  } else { // WAITING_FOR_TAG
-
-    if (tags.size()) {
-      auto offset = tags[0].offset;
-
-      d_freq_offset_short = pmt::to_double(tags[0].value);
-
-      if (offset - nread + d_fftsize <= ninput && noutput >= 128) {
+      if (max_consume) {
 
 #if USE_CUSTOM_BUFFERS
-        checkCudaErrors(cufftExecC2C(d_plan,
-                                     (cufftComplex *)&in[offset - nread],
-                                     d_dev_in, CUFFT_FORWARD));
-#else
-        checkCudaErrors(cudaMemcpyAsync(d_dev_in, &in[offset - nread],
-                                        d_fftsize * sizeof(cufftComplex),
-                                        cudaMemcpyHostToDevice, d_stream));
-        checkCudaErrors(
-            cufftExecC2C(d_plan, d_dev_in, d_dev_in, CUFFT_FORWARD));
-#endif
-
-        auto gridSize = (d_fftsize + d_block_size - 1) / d_block_size;
-        exec_multiply_kernel_ccc(d_dev_in, d_dev_training_freq, d_dev_in,
-                                 d_fftsize, gridSize, d_block_size, d_stream);
-
-        checkCudaErrors(
-            cufftExecC2C(d_plan, d_dev_in, d_dev_in, CUFFT_INVERSE));
-
-        // Find the peak
-        std::vector<gr_complex> host_data(d_fftsize);
-        checkCudaErrors(cudaMemcpyAsync(host_data.data(), d_dev_in,
-                                        d_fftsize * sizeof(cufftComplex),
-                                        cudaMemcpyDeviceToHost, d_stream));
-
+        auto nsyms = std::min(nconsumed / 80, noutput / 64);
+        auto gridSize = (80 * nsyms + d_block_size - 1) / d_block_size;
+        exec_remove_cp((cuFloatComplex *)in, (cuFloatComplex *)out, 80, 16,
+                       80 * nsyms, gridSize, d_block_size, d_stream);
         cudaStreamSynchronize(d_stream);
-        std::vector<float> abs_corr(d_fftsize);
-        // std::cout << "freq_corr = [";
 
-        size_t max_index = 0;
-        float max_value = 0.0;
-        for (size_t i = 0; i < host_data.size(); i++) {
-          abs_corr[i] = std::abs(host_data[i]);
-          // std::cout << abs_corr[i];
-          // if (i < host_data.size()-1)
-          // std::cout << ",";
+        // gr_complex host_out[100];
+        // cudaMemcpy(host_out, out, 100*sizeof(gr_complex),
+        // cudaMemcpyDeviceToHost);
 
-          if (abs_corr[i] > max_value) {
-            max_value = abs_corr[i];
-            max_index = i;
-          }
+        consume_each(80 * nsyms);
+        return 64 * nsyms;
+
+        // int i = 0;
+        // int o = 0;
+        // while (i + 80 <= nconsumed && o + 64 <= noutput_items) {
+        //   cudaMemcpy(out + o, in + i + 16,
+        //          sizeof(gr_complex) * 64, cudaMemcpyDeviceToDevice); // throw
+        //          away the cyclic prefix
+
+        //   i += 80;
+        //   o += 64;
+        // }
+
+        // consume_each(i);
+        // return o;
+
+#else
+        int i = 0;
+        int o = 0;
+        while (i + 80 <= max_consume && o + 64 <= max_produce) {
+          memcpy(out + o, in + i + 16,
+                 sizeof(gr_complex) * 64); // throw away the cyclic prefix
+
+          i += 80;
+          o += 64;
         }
 
-        // size_t max_index = 297;
-
-        // Copy the LTF symbols
-        // offset and nread should always be equal
-        size_t copy_index = 0;
-        if (max_index > (160 - 32 - 1)) {
-          copy_index = max_index - 160 + 32 + 1;
-        }
-
-        // std::cout << max_index << " / " << nread << " / " << offset << " / "
-        // << (offset - nread + copy_index) << std::endl;
-
-#if USE_CUSTOM_BUFFERS
-
-        checkCudaErrors(cudaMemcpyAsync(
-            out + nproduced, in + (offset - nread + copy_index),
-            sizeof(gr_complex) * 128, cudaMemcpyDeviceToDevice, d_stream));
-        cudaStreamSynchronize(d_stream);
-#else
-        memcpy(out + nproduced, in + (offset - nread + copy_index),
-               sizeof(gr_complex) * 128);
+        // FILE *pFile;
+        // pFile = fopen("/tmp/gr_sync_long.fc32", "wb");
+        // fwrite(out, sizeof(gr_complex), o, pFile);
+        nconsumed += i;
+        nproduced += o;
 #endif
 
-        const pmt::pmt_t key = pmt::string_to_symbol("wifi_start");
-        const pmt::pmt_t value = // pmt::from_long(max_index);
-            pmt::from_double(d_freq_offset_short - d_freq_offset);
-        const pmt::pmt_t srcid = pmt::string_to_symbol(name());
-        add_item_tag(0, nwritten + nproduced, key, value, srcid);
-
-        d_num_syms = 0;
-        nproduced += 128;
-        d_state = FINISH_LAST_FRAME;
-        nconsumed = (offset - nread + copy_index + 128);
-
-        consume_each(nconsumed);
-        return nproduced;
       } else {
-        consume_each(offset - nread);
-        return 0;
+        // There are no samples left in the input buffer to try and finish the
+        // frame
+        break;
+      }
+    } else { // WAITING_FOR_TAG
+
+      if (tag_idx < tags.size()) {
+        auto offset = tags[tag_idx].offset;
+
+        d_freq_offset_short = pmt::to_double(tags[0].value);
+
+        if (offset - nread + d_fftsize <= ninput &&
+            (noutput - nproduced) >= 128) {
+
+#if USE_CUSTOM_BUFFERS
+          checkCudaErrors(cufftExecC2C(d_plan,
+                                       (cufftComplex *)&in[offset - nread],
+                                       d_dev_in, CUFFT_FORWARD));
+#else
+          checkCudaErrors(cudaMemcpyAsync(d_dev_in, &in[offset - nread],
+                                          d_fftsize * sizeof(cufftComplex),
+                                          cudaMemcpyHostToDevice, d_stream));
+          checkCudaErrors(
+              cufftExecC2C(d_plan, d_dev_in, d_dev_in, CUFFT_FORWARD));
+#endif
+
+          auto gridSize = (d_fftsize + d_block_size - 1) / d_block_size;
+          exec_multiply_kernel_ccc(d_dev_in, d_dev_training_freq, d_dev_in,
+                                   d_fftsize, gridSize, d_block_size, d_stream);
+
+          checkCudaErrors(
+              cufftExecC2C(d_plan, d_dev_in, d_dev_in, CUFFT_INVERSE));
+
+          // Find the peak
+          std::vector<gr_complex> host_data(d_fftsize);
+          checkCudaErrors(cudaMemcpyAsync(host_data.data(), d_dev_in,
+                                          d_fftsize * sizeof(cufftComplex),
+                                          cudaMemcpyDeviceToHost, d_stream));
+
+          cudaStreamSynchronize(d_stream);
+          std::vector<float> abs_corr(d_fftsize);
+          // std::cout << "freq_corr = [";
+
+          size_t max_index = 0;
+          float max_value = 0.0;
+          for (size_t i = 0; i < host_data.size(); i++) {
+            abs_corr[i] = std::abs(host_data[i]);
+            // std::cout << abs_corr[i];
+            // if (i < host_data.size()-1)
+            // std::cout << ",";
+
+            if (abs_corr[i] > max_value) {
+              max_value = abs_corr[i];
+              max_index = i;
+            }
+          }
+
+          // size_t max_index = 297;
+
+          // Copy the LTF symbols
+          // offset and nread should always be equal
+          size_t copy_index = 0;
+          if (max_index > (160 - 32 - 1)) {
+            copy_index = max_index - 160 + 32 + 1;
+          }
+
+          // std::cout << max_index << " / " << nread << " / " << offset << " /
+          // "
+          // << (offset - nread + copy_index) << std::endl;
+
+#if USE_CUSTOM_BUFFERS
+
+          checkCudaErrors(cudaMemcpyAsync(
+              out + nproduced, in + (offset - nread + copy_index),
+              sizeof(gr_complex) * 128, cudaMemcpyDeviceToDevice, d_stream));
+          cudaStreamSynchronize(d_stream);
+#else
+          memcpy(out + nproduced, in + (offset - nread + copy_index),
+                 sizeof(gr_complex) * 128);
+#endif
+
+          const pmt::pmt_t key = pmt::string_to_symbol("wifi_start");
+          const pmt::pmt_t value = // pmt::from_long(max_index);
+              pmt::from_double(d_freq_offset_short - d_freq_offset);
+          const pmt::pmt_t srcid = pmt::string_to_symbol(name());
+          add_item_tag(0, nwritten + nproduced, key, value, srcid);
+
+          d_num_syms = 0;
+          d_state = FINISH_LAST_FRAME;
+          nconsumed = (offset - nread + copy_index + 128);
+          nproduced += 128;
+          tag_idx++;
+
+        } else {
+          // not enough left with this tag
+          // clear up to the current tag
+          nconsumed = offset - nread;
+          break;
+        }
+
+      } else // out of tags
+      {
+        nconsumed = ninput;
+        break;
       }
     }
   }
-
-  return 0;
+  consume_each(nconsumed);
+  return nproduced;
 }
 
 const std::vector<gr_complex> sync_long_impl::LONG = {

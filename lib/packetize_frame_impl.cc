@@ -73,7 +73,10 @@ void packetize_frame_impl::set_algorithm(Equalizer algo) {
   }
 }
 
-packetize_frame_impl::~packetize_frame_impl() {}
+packetize_frame_impl::~packetize_frame_impl() {
+  std::cout << "packetized " << packet_cnt << std::endl;
+
+}
 
 void packetize_frame_impl::forecast(int noutput_items,
                                     gr_vector_int &ninput_items_required) {
@@ -198,7 +201,9 @@ int packetize_frame_impl::general_work(int noutput_items,
                                pmt::init_c32vector(64, d_equalizer->get_H()));
 
         d_samples = pmt::make_c32vector(64 * d_frame_symbols, gr_complex(0, 0));
-        d_pdu = pmt::cons(d_dict, d_pdu);
+        d_pdu = pmt::cons(d_dict, d_samples);
+
+        packet_cnt++;
 
         d_state = FINISH_LAST_FRAME;
 

@@ -55,8 +55,13 @@ private:
 
   static const int d_max_out_buffer = 8*1024*1024;  // max bytes for output buffer
 
+  int packet_cnt = 0;
+
 public:
   sync_short_impl(float threshold, int min_plateau);
+  ~sync_short_impl() { 
+    std::cout << "sync_short: " << packet_cnt << std::endl;
+  }
 
   void insert_tag(uint64_t item, double freq_offset, uint64_t input_item);
 

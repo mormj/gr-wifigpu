@@ -24,4 +24,14 @@ parameters:
     options: ["True", "False"]
     option_labels: [Enable, Disable]
 
+inputs:
+- label: pdus
+  domain: message
+  optional: true
+
+outputs: 
+- label: pdus
+  domain: message
+  optional: true
+
 file_format: 1
