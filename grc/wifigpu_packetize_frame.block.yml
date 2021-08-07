@@ -1,0 +1,26 @@
+id: wifigpu_packetize_frame
+label: packetize frame
+category: '[WIFIGPU]'
+templates:
+  imports: import wifigpu
+  make: wifigpu.packetize_frame(${algo}, ${freq}, ${bw})
+parameters:
+- id: algo
+  label: Algo
+  dtype: int
+- id: freq
+  label: Freq
+  dtype: real
+- id: bw
+  label: Bw
+  dtype: real
+inputs:
+- label: in
+  domain: stream
+  dtype: complex
+  vlen: '64'
+outputs:
+- label: pdus
+  domain: message
+  optional: true
+file_format: 1

@@ -130,7 +130,7 @@ void frame_equalizer_impl::set_algorithm(Equalizer algo) {
 
   switch (algo) {
 
-  // case COMB:
+  case COMB:
     // dout << "Comb" << std::endl;
     d_equalizer = new equalizer::comb();
     break;
@@ -427,6 +427,9 @@ int frame_equalizer_impl::general_work(int noutput_items,
       return 0;
     }
   }
+
+  throw std::runtime_error("should not get here");
+  return 0;
 } // namespace wifigpu
 
 bool frame_equalizer_impl::decode_signal_field(uint8_t *rx_bits) {

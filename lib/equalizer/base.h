@@ -18,24 +18,30 @@
 #ifndef INCLUDED_IEEE802_11_EQUALIZER_BASE_H
 #define INCLUDED_IEEE802_11_EQUALIZER_BASE_H
 
-#include <gnuradio/gr_complex.h>
 #include <gnuradio/digital/constellation.h>
+#include <gnuradio/gr_complex.h>
 
 namespace gr {
 namespace wifigpu {
 namespace equalizer {
 
 class base {
-public:
-	virtual ~base() {};
-	virtual void equalize(gr_complex *in, int n, gr_complex *symbols, uint8_t *bits, std::shared_ptr<gr::digital::constellation> mod) = 0;
-	virtual double get_snr() = 0;
+protected:
+  gr_complex d_H[64];
 
-	static const gr_complex POLARITY[127];
-	static const gr_complex LONG[64];
+public:
+  virtual ~base(){};
+  virtual void equalize(gr_complex *in, int n, gr_complex *symbols,
+                        uint8_t *bits,
+                        std::shared_ptr<gr::digital::constellation> mod) = 0;
+  virtual double get_snr() = 0;
+  virtual gr_complex *get_H() { return d_H; }
+
+  static const gr_complex POLARITY[127];
+  static const gr_complex LONG[64];
 };
 
-} /* namespace channel_estimation */
+} // namespace equalizer
 } /* namespace wifigpu */
 } /* namespace gr */
 
