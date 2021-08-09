@@ -67,7 +67,7 @@ public:
  */
 class frame_param {
 public:
-	frame_param(ofdm_param &ofdm, int psdu_length);
+	frame_param(ofdm_param *ofdm, int psdu_length);
 	// PSDU size in bytes
 	int psdu_size;
 	// number of OFDM symbols (17-11)

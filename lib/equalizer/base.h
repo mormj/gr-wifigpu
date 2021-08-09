@@ -36,6 +36,7 @@ public:
                         std::shared_ptr<gr::digital::constellation> mod) = 0;
   virtual double get_snr() = 0;
   virtual gr_complex *get_H() { return d_H; }
+  virtual void set_H(const gr_complex *H) { memcpy(d_H, H, 64 * sizeof(gr_complex)); }
 
   static const gr_complex POLARITY[127];
   static const gr_complex LONG[64];

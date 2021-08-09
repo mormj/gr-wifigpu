@@ -23,11 +23,13 @@
 #include <atomic>
 #include <future>
 #include <iostream>
+#include <chrono>
 
 #include "detail.h"
-#include "worker.h"
+#include "../burst_worker.h"
 
 #include <pmt/pmt.h>
+using namespace std::chrono_literals;
 
 namespace gr {
 namespace wifigpu {
@@ -55,7 +57,10 @@ public:
         burst_worker b(i);
         while (true) {
           while (isPop) { // if there is anything in the queue
+            // std::cout << "dequeueing ... " << std::endl;
+            // std::cout << "dequeue " << i << " ? " << this->q.qsize() << std::endl;
             this->oq.push(b.process(_p));
+            // std::this_thread::sleep_for(2000ms);
             if (_flag) {
               std::cout << "return1 " << i << std::endl;
               return; // the thread is wanted to stop, return even if the queue
@@ -82,10 +87,14 @@ public:
       this->threads[i].reset(new std::thread(f));
     }
   }
-  ~threadpool();
+  ~threadpool()
+  {
+    std::cout << "threadpool: " << std::endl;
+  };
   void enqueue(pmt::pmt_t p) {
-    // std::cout << "enqueuing ... " << std::endl;
+    
     this->q.push(p);
+    // std::cout << "enqueuing ... " << this->q.qsize() << std::endl;
     std::unique_lock<std::mutex> lock(this->m_mutex);
     this->cv.notify_one();
   }
@@ -95,6 +104,10 @@ public:
     return r;
   }
 
+  size_t qsize()
+  {
+    return this->q.qsize();
+  }
 private:
   std::vector<std::unique_ptr<std::thread>> threads;
   std::thread &get_thread(int i) { return *this->threads[i]; }

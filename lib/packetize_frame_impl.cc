@@ -75,12 +75,11 @@ void packetize_frame_impl::set_algorithm(Equalizer algo) {
 
 packetize_frame_impl::~packetize_frame_impl() {
   std::cout << "packetized " << packet_cnt << std::endl;
-
 }
 
 void packetize_frame_impl::forecast(int noutput_items,
                                     gr_vector_int &ninput_items_required) {
-  ninput_items_required[0] = noutput_items+3;
+  ninput_items_required[0] = noutput_items + 3;
 }
 
 int packetize_frame_impl::general_work(int noutput_items,
@@ -130,7 +129,7 @@ int packetize_frame_impl::general_work(int noutput_items,
       }
 
       size_t vlen;
-      gr_complex *pdu_vec = pmt::c32vector_writable_elements(d_samples, vlen);
+      gr_complex *pdu_vec = pmt::c32vector_writable_elements(pmt::cdr(d_pdu), vlen);
       for (int o = 0; o < symbols_to_process; o++) {
         if (d_current_symbol > d_frame_symbols + 2) {
           d_state = WAITING_FOR_TAG;
@@ -182,37 +181,45 @@ int packetize_frame_impl::general_work(int noutput_items,
         d_current_symbol++;
       }
 
-      
       if (decode_signal_field(signal_field)) {
 
-        // std::cout << d_frame_bytes << " / " << d_frame_encoding << std::endl;
-        d_dict = pmt::make_dict();
-        d_dict = pmt::dict_add(d_dict, pmt::mp("frame_bytes"),
-                               pmt::from_uint64(d_frame_bytes));
-        d_dict = pmt::dict_add(d_dict, pmt::mp("frame_symbols"),
-                               pmt::from_uint64(d_frame_symbols));
-        d_dict = pmt::dict_add(d_dict, pmt::mp("encoding"),
-                               pmt::from_uint64(d_frame_encoding));
-        d_dict = pmt::dict_add(d_dict, pmt::mp("snr"),
-                               pmt::from_double(d_equalizer->get_snr()));
-        d_dict =
-            pmt::dict_add(d_dict, pmt::mp("freq"), pmt::from_double(d_freq));
-        d_dict = pmt::dict_add(d_dict, pmt::mp("freq_offset"),
-                               pmt::from_double(d_freq_offset_from_synclong));
-        d_dict = pmt::dict_add(d_dict, pmt::mp("H"),
-                               pmt::init_c32vector(64, d_equalizer->get_H()));
+        // check for maximum frame size
+        if (d_frame_symbols > MAX_SYM || d_frame_bytes > MAX_PSDU_SIZE) {
+          consume_each(frame_start + 3);
+          d_state = WAITING_FOR_TAG;
+          return 0;
+        }
 
-        d_samples = pmt::make_c32vector(64 * d_frame_symbols, gr_complex(0, 0));
-        d_pdu = pmt::cons(d_dict, d_samples);
+        // std::cout << d_frame_bytes << " / " << d_frame_encoding << std::endl;
+        pmt::pmt_t d = pmt::make_dict();
+        d = pmt::dict_add(d, pmt::mp("frame_bytes"),
+                          pmt::from_uint64(d_frame_bytes));
+        d = pmt::dict_add(d, pmt::mp("frame_symbols"),
+                          pmt::from_uint64(d_frame_symbols));
+        d = pmt::dict_add(d, pmt::mp("encoding"),
+                          pmt::from_uint64(d_frame_encoding));
+        d = pmt::dict_add(d, pmt::mp("snr"),
+                          pmt::from_double(d_equalizer->get_snr()));
+        d = pmt::dict_add(d, pmt::mp("freq"), pmt::from_double(d_freq));
+        d = pmt::dict_add(d, pmt::mp("bw"), pmt::from_double(d_bw));
+        d = pmt::dict_add(d, pmt::mp("freq_offset"),
+                          pmt::from_double(d_freq_offset_from_synclong));
+        d = pmt::dict_add(d, pmt::mp("H"),
+                          pmt::init_c32vector(64, d_equalizer->get_H()));
+        d = pmt::dict_add(d, pmt::mp("prev_pilots"),
+                          pmt::init_c32vector(4, d_prev_pilots));
+
+        auto samples = pmt::make_c32vector(64 * d_frame_symbols, gr_complex(0, 0));
+        d_pdu = pmt::cons(d, samples);
 
         packet_cnt++;
 
         d_state = FINISH_LAST_FRAME;
 
-        consume_each(frame_start+3);
+        consume_each(frame_start + 3);
         return 0;
       } else {
-        consume_each(frame_start+3);
+        consume_each(frame_start + 3);
         d_state = WAITING_FOR_TAG;
         return 0;
       }
@@ -291,7 +298,7 @@ void packetize_frame_impl::process_symbol(gr_complex *in, gr_complex *symbols,
 bool packetize_frame_impl::decode_signal_field(uint8_t *rx_bits) {
 
   static ofdm_param ofdm(BPSK_1_2);
-  static frame_param frame(ofdm, 0);
+  static frame_param frame(&ofdm, 0);
 
   deinterleave(rx_bits);
   uint8_t *decoded_bits = d_decoder.decode(&ofdm, &frame, d_deinterleaved);

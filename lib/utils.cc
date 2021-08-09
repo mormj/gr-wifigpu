@@ -97,19 +97,19 @@ ofdm_param::print() {
 }
 
 
-frame_param::frame_param(ofdm_param &ofdm, int psdu_length) {
+frame_param::frame_param(ofdm_param *ofdm, int psdu_length) {
 
 	psdu_size = psdu_length;
 
 	// number of symbols (17-11)
-	n_sym = (int) ceil((16 + 8 * psdu_size + 6) / (double) ofdm.n_dbps);
+	n_sym = (int) ceil((16 + 8 * psdu_size + 6) / (double) ofdm->n_dbps);
 
-	n_data_bits = n_sym * ofdm.n_dbps;
+	n_data_bits = n_sym * ofdm->n_dbps;
 
 	// number of padding bits (17-13)
 	n_pad = n_data_bits - (16 + 8 * psdu_size + 6);
 
-	n_encoded_bits = n_sym * ofdm.n_cbps;
+	n_encoded_bits = n_sym * ofdm->n_cbps;
 }
 void
 frame_param::print() {

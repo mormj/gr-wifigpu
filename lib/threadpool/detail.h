@@ -26,6 +26,11 @@ public:
     std::unique_lock<std::mutex> lock(this->mutex);
     return this->q.size();
   }
+  size_t qsize()
+  {
+    std::unique_lock<std::mutex> lock(this->mutex);
+    return this->q.size();
+  }
 
 private:
   std::queue<T> q;

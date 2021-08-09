@@ -10,14 +10,17 @@
 
 #include <wifigpu/tp_decode_mac.h>
 
-#include <queue>
-#include <thread>        
-#include <mutex>       
 #include <atomic>
 #include <future>
 #include <iostream>
+#include <mutex>
+#include <queue>
+#include <thread>
 
 #include "threadpool/threadpool.h"
+#include "utils.h"
+#include "viterbi_decoder/viterbi_decoder.h"
+#include <wifigpu/mapper.h>
 
 namespace gr {
 namespace wifigpu {
@@ -29,7 +32,14 @@ private:
   std::thread *monitor_thread;
   threadpool *tp;
   bool exit_monitor_thread;
-  int packet_cnt;
+  int packet_cnt = 0;
+
+  bool d_debug;
+  bool d_log;
+
+  pmt::pmt_t d_meta;
+
+
 
 public:
   tp_decode_mac_impl(int num_threads, int queue_depth, bool log = false,

@@ -14,8 +14,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef INCLUDED_IEEE802_11_MAPPER_H
-#define INCLUDED_IEEE802_11_MAPPER_H
+#ifndef INCLUDED_WIFIGPU_MAPPER_H
+#define INCLUDED_WIFIGPU_MAPPER_H
 
 #include <wifigpu/api.h>
 #include <gnuradio/block.h>
@@ -46,4 +46,4 @@ public:
 }  // namespace wifigpu
 }  // namespace gr
 
-#endif /* INCLUDED_IEEE802_11_MAPPER_H */
+#endif /* INCLUDED_WIFIGPU_MAPPER_H */

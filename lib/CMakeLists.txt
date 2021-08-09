@@ -70,6 +70,7 @@ list(APPEND wifigpu_sources
     equalizer/ls.cc
     equalizer/lms.cc
     equalizer/sta.cc
+    mapper.cc
     utils.cc
     constellations_impl.cc
     viterbi_decoder/base.cc

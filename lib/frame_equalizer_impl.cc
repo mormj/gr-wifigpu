@@ -435,7 +435,7 @@ int frame_equalizer_impl::general_work(int noutput_items,
 bool frame_equalizer_impl::decode_signal_field(uint8_t *rx_bits) {
 
   static ofdm_param ofdm(BPSK_1_2);
-  static frame_param frame(ofdm, 0);
+  static frame_param frame(&ofdm, 0);
 
   deinterleave(rx_bits);
   uint8_t *decoded_bits = d_decoder.decode(&ofdm, &frame, d_deinterleaved);

@@ -14,11 +14,11 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <ieee802_11/mapper.h>
+#include <wifigpu/mapper.h>
 #include "utils.h"
 #include <gnuradio/io_signature.h>
 
-using namespace gr::ieee802_11;
+using namespace gr::wifigpu;
 
 
 class mapper_impl : public mapper {
@@ -81,7 +81,7 @@ int general_work(int noutput, gr_vector_int& ninput_items,
 			const char *psdu = static_cast<const char*>(pmt::blob_data(pmt::cdr(msg)));
 
 			// ############ INSERT MAC STUFF
-			frame_param frame(d_ofdm, psdu_length);
+			frame_param frame(&d_ofdm, psdu_length);
 			if(frame.n_sym > MAX_SYM) {
 				std::cout << "packet too large, maximum number of symbols is " << MAX_SYM << std::endl;
 				return 0;
