@@ -199,7 +199,7 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
       int i = 0;
       int o = 0;
       while (i + 80 <= max_consume && o + 64 <= max_produce) {
-        memcpy(out + o, in + i + 16,
+        memcpy(out + o + nproduced, in + i + nconsumed + 16,
                sizeof(gr_complex) * 64); // throw away the cyclic prefix
 
         i += 80;
