@@ -45,6 +45,8 @@ public:
   tp_decode_mac_impl(int num_threads, int queue_depth, bool log = false,
                      bool debug = false);
   ~tp_decode_mac_impl();
+
+  bool stop();
 };
 
 } // namespace wifigpu

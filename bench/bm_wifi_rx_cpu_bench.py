@@ -22,6 +22,7 @@ from gnuradio import eng_notation
 import ieee802_11
 import numpy as np
 import time
+import os
 
 
 def snipfcn_snippet_0(self):
@@ -50,6 +51,13 @@ class wifi_rx_cpu_bench(gr.top_block):
         filename = args.filename
         buffer_size = args.buffer_size
         stop_point = args.stop_point
+
+        print(filename)
+        if not filename:
+            filename = 'wifi_synth_' + str(args.pdu_length) + '_' + str(args.pkt_space) + '_' + str(args.bandwidth_mhz) + 'MHz_' + '10s_MCS' + str(args.encoding) + '.fc32'
+            print(filename)
+
+        filename = os.path.join(args.file_base, filename)
 
         ##################################################
         # Variables
@@ -160,6 +168,9 @@ def argument_parser():
     parser.add_argument(
         "-f", "--filename", dest="filename", type=str, default=None,
         help="Set filename [default=%(default)r]")
+    parser.add_argument(
+        "-d", "--file_base", dest="file_base", type=str, default='/data/data/cropcircles',
+        help="Set file_base [default=%(default)r]")
     parser.add_argument('--encoding', type=int, default=0)
     parser.add_argument('--pdu_length', type=int, default=36)
     parser.add_argument('--pkt_space', type=int, default=1000)

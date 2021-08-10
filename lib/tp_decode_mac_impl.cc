@@ -93,12 +93,18 @@ void tp_decode_mac_impl::handle_pdu(pmt::pmt_t msg) {
  */
 tp_decode_mac_impl::~tp_decode_mac_impl() {
 
+
+  
+}
+
+bool tp_decode_mac_impl::stop()
+{
   while(tp->qsize() > 0)
   {
     std::cout << "got " << packet_cnt << " packets" << " qsize: " << tp->qsize() << std::endl;
     std::this_thread::sleep_for(100ms);
   }
-  
+  return true;
 }
 
 // void tp_decode_mac_impl::decode(uint8_t *rx_bits, uint8_t *rx_symbols,
