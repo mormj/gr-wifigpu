@@ -22,7 +22,7 @@
 #include "config.h"
 #endif
 
-#define USE_CUSTOM_BUFFERS 0
+#define USE_CUSTOM_BUFFERS 1
 
 #include "sync_long_impl.h"
 #include <cuda_buffer/cuda_buffer.h>
@@ -156,16 +156,14 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
           d_state = WAITING_FOR_TAG;
           continue;
         }
-      }
-      else{ // no more tags
+      } else { // no more tags
         if (max_consume < 80 ||
-            max_produce < 64) { // need an entire OFDM symbol to do anything here
+            max_produce <
+                64) { // need an entire OFDM symbol to do anything here
           nconsumed += max_consume;
           break;
         }
       }
-
-
 
 #if USE_CUSTOM_BUFFERS
       auto nsyms = std::min(nconsumed / 80, noutput / 64);
@@ -275,9 +273,8 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
             copy_index = max_index - 160 + 32 + 1;
           }
 
-          // std::cout << max_index << " / " << nread << " / " << offset << " /
-          // "
-          // << (offset - nread + copy_index) << std::endl;
+          std::cout << max_index << " / " << nread << " / " << offset << " / "
+                    << (offset - nread + copy_index) << std::endl;
 
 #if USE_CUSTOM_BUFFERS
 
