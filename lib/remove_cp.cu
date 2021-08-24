@@ -11,7 +11,7 @@ remove_cp(cuFloatComplex* in, cuFloatComplex* out, int symlen, int cplen, int n)
         int samp_idx = i % symlen;
 
         if (samp_idx >= cplen) {
-            out[sym_idx * (symlen-cplen) + samp_idx] = in[i+cplen];
+            out[sym_idx * (symlen-cplen) + samp_idx - cplen] = in[sym_idx * symlen + samp_idx];
         }
     }
 }
