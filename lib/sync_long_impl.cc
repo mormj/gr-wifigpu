@@ -54,10 +54,10 @@ sync_long_impl::sync_long_impl(unsigned int sync_length)
           "sync_long",
 #if USE_CUSTOM_BUFFERS
           gr::io_signature::make(1, 1, sizeof(gr_complex), cuda_buffer::type),
-          gr::io_signature::make(1, 1, sizeof(gr_complex), cuda_buffer::type)),
+          gr::io_signature::make(1, 1, 64*sizeof(gr_complex), cuda_buffer::type)),
 #else
           gr::io_signature::make(1, 1, sizeof(gr_complex)),
-          gr::io_signature::make(1, 1, sizeof(gr_complex))),
+          gr::io_signature::make(1, 1, 64*sizeof(gr_complex))),
 #endif
       d_sync_length(sync_length) {
   // set_output_multiple(d_fftsize); // make sure the fft size is sufficient for
@@ -95,8 +95,9 @@ sync_long_impl::sync_long_impl(unsigned int sync_length)
   d_block_size = 1024;
 
   set_tag_propagation_policy(TPP_DONT);
+  set_relative_rate(1, 64);
 
-  set_output_multiple(4096);
+  set_output_multiple(4096 / 64);
 }
 
 /*
@@ -107,9 +108,9 @@ sync_long_impl::~sync_long_impl() {}
 void sync_long_impl::forecast(int noutput_items,
                               gr_vector_int &ninput_items_required) {
 
-  auto nreq = noutput_items;
-  if (nreq < d_fftsize)
-    nreq = d_fftsize;
+  auto nreq = 64 * noutput_items;
+  // if (nreq < d_fftsize)
+  //   nreq = d_fftsize;
 
   ninput_items_required[0] = nreq;
   // ninput_items_required[1] = nreq;
@@ -133,7 +134,7 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
 
   int nconsumed = 0;
   int nproduced = 0;
-  auto noutput = noutput_items;
+  auto noutput = noutput_items * 64;
 
   size_t tag_idx = 0;
   while (true) {
@@ -293,7 +294,7 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
           const pmt::pmt_t value = // pmt::from_long(max_index);
               pmt::from_double(d_freq_offset_short - d_freq_offset);
           const pmt::pmt_t srcid = pmt::string_to_symbol(name());
-          add_item_tag(0, nwritten + nproduced, key, value, srcid);
+          add_item_tag(0, nwritten + nproduced/64, key, value, srcid);
 
           d_num_syms = 0;
           d_state = FINISH_LAST_FRAME;
@@ -317,7 +318,7 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
   }
   cudaStreamSynchronize(d_stream);
   consume_each(nconsumed);
-  return nproduced;
+  return nproduced / 64;
 }
 
 const std::vector<gr_complex> sync_long_impl::LONG = {

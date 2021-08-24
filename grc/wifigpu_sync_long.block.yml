@@ -17,4 +17,5 @@ outputs:
 - label: out
   domain: stream
   dtype: complex
+  vlen: 64
 file_format: 1
