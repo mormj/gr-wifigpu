@@ -51,6 +51,9 @@ public:
           this->flags[i]); // a copy of the shared ptr to the flag
       auto f = [this, i, flag /* a copy of the shared ptr to the flag */]() {
         // std::cout << "entering thread " << i << std::endl;
+                        gr::thread::set_thread_name(pthread_self(),
+                                        std::string("tp") + std::to_string(i));
+                                        
         std::atomic<bool> &_flag = *flag;
         pmt::pmt_t _p;
         bool isPop = this->q.pop(_p);

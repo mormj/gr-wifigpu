@@ -22,7 +22,7 @@
 #include "config.h"
 #endif
 
-#define USE_CUSTOM_BUFFERS 1
+#define USE_CUSTOM_BUFFERS 0
 
 #include "sync_long_impl.h"
 #include <cuda_buffer/cuda_buffer.h>
@@ -294,6 +294,8 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
               pmt::from_double(d_freq_offset_short - d_freq_offset);
           const pmt::pmt_t srcid = pmt::string_to_symbol(name());
           add_item_tag(0, nwritten + nproduced, key, value, srcid);
+
+          // std::cout << "adding tag at " << (nwritten + nproduced) / 64 << std::endl;
 
           d_num_syms = 0;
           d_state = FINISH_LAST_FRAME;

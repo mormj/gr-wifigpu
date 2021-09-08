@@ -751,7 +751,7 @@ blocks:
     label: ''
     short_id: ''
     type: intx
-    value: '1000'
+    value: '2000'
   states:
     bus_sink: false
     bus_source: false
@@ -865,7 +865,7 @@ blocks:
     label: ''
     short_id: ''
     type: intx
-    value: '20'
+    value: '10'
   states:
     bus_sink: false
     bus_source: false

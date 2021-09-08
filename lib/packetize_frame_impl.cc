@@ -214,6 +214,12 @@ int packetize_frame_impl::general_work(int noutput_items,
 
         packet_cnt++;
 
+                        
+                        if (packet_cnt % 1000 == 0)
+                        {
+                        std::cout << "packetize_frame: " << packet_cnt << std::endl;
+                        }
+
         d_state = FINISH_LAST_FRAME;
 
         consume_each(frame_start + 3);
