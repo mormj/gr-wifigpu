@@ -36,7 +36,7 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: '70'
+    value: '60'
   states:
     bus_sink: false
     bus_source: false
@@ -110,7 +110,7 @@ blocks:
     comment: ''
     freq: freq
     maxoutbuf: '0'
-    minoutbuf: '0'
+    minoutbuf: '1048576'
     offset: '0'
     phase: '0'
     samp_rate: samp_rate
@@ -122,7 +122,7 @@ blocks:
     bus_structure: null
     coordinate: [360, 188.0]
     rotation: 0
-    state: true
+    state: enabled
 - name: blocks_copy_0
   id: blocks_copy
   parameters:
@@ -131,7 +131,7 @@ blocks:
     comment: ''
     enabled: 'True'
     maxoutbuf: '0'
-    minoutbuf: '0'
+    minoutbuf: '1048576'
     showports: 'False'
     type: complex
     vlen: '1'
@@ -139,7 +139,94 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [976, 164.0]
+    coordinate: [1000, 164.0]
+    rotation: 0
+    state: disabled
+- name: blocks_null_sink_0
+  id: blocks_null_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    bus_structure_sink: '[[0,],]'
+    comment: ''
+    num_inputs: '1'
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1000, 228.0]
+    rotation: 0
+    state: disabled
+- name: blocks_null_sink_0_0
+  id: blocks_null_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    bus_structure_sink: '[[0,],]'
+    comment: ''
+    num_inputs: '1'
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [992, 284.0]
+    rotation: 0
+    state: disabled
+- name: blocks_null_sink_0_1
+  id: blocks_null_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    bus_structure_sink: '[[0,],]'
+    comment: ''
+    num_inputs: '1'
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [992, 332.0]
+    rotation: 0
+    state: disabled
+- name: blocks_null_sink_0_2
+  id: blocks_null_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    bus_structure_sink: '[[0,],]'
+    comment: ''
+    num_inputs: '1'
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [992, 156.0]
+    rotation: 0
+    state: disabled
+- name: blocks_null_source_0
+  id: blocks_null_source
+  parameters:
+    affinity: ''
+    alias: ''
+    bus_structure_source: '[[0,],]'
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_outputs: '1'
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [320, 164.0]
     rotation: 0
     state: disabled
 - name: import_0
@@ -189,7 +276,7 @@ blocks:
     bus_structure: null
     coordinate: [664, 360.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: qtgui_freq_sink_x_0
   id: qtgui_freq_sink_x
   parameters:
@@ -270,7 +357,7 @@ blocks:
     bus_structure: null
     coordinate: [1400, 176.0]
     rotation: 0
-    state: true
+    state: enabled
 - name: qtgui_time_sink_x_0
   id: qtgui_time_sink_x
   parameters:
@@ -365,7 +452,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1152, 396.0]
+    coordinate: [1312, 380.0]
     rotation: 0
     state: disabled
 - name: wifigpu_gpu_channelizer_0
@@ -375,7 +462,7 @@ blocks:
     alias: ''
     comment: ''
     maxoutbuf: '0'
-    minoutbuf: '0'
+    minoutbuf: '1048576'
     nchans: nchans
     taps: taps
   states:
@@ -384,22 +471,27 @@ blocks:
     bus_structure: null
     coordinate: [664, 184.0]
     rotation: 0
-    state: enabled
+    state: disabled
 
 connections:
 - [analog_sig_source_x_0, '0', pfb_channelizer_ccf_0, '0']
 - [analog_sig_source_x_0, '0', wifigpu_gpu_channelizer_0, '0']
 - [blocks_copy_0, '0', qtgui_freq_sink_x_0, '0']
 - [blocks_copy_0, '0', qtgui_time_sink_x_0, '0']
+- [blocks_null_source_0, '0', wifigpu_gpu_channelizer_0, '0']
 - [pfb_channelizer_ccf_0, '0', blocks_copy_0, '0']
 - [pfb_channelizer_ccf_0, '0', qtgui_freq_sink_x_0, '0']
 - [pfb_channelizer_ccf_0, '1', qtgui_freq_sink_x_0, '1']
 - [pfb_channelizer_ccf_0, '2', qtgui_freq_sink_x_0, '2']
 - [pfb_channelizer_ccf_0, '3', qtgui_freq_sink_x_0, '3']
 - [wifigpu_gpu_channelizer_0, '0', blocks_copy_0, '0']
+- [wifigpu_gpu_channelizer_0, '0', blocks_null_sink_0_2, '0']
 - [wifigpu_gpu_channelizer_0, '0', qtgui_freq_sink_x_0, '0']
+- [wifigpu_gpu_channelizer_0, '1', blocks_null_sink_0, '0']
 - [wifigpu_gpu_channelizer_0, '1', qtgui_freq_sink_x_0, '1']
+- [wifigpu_gpu_channelizer_0, '2', blocks_null_sink_0_0, '0']
 - [wifigpu_gpu_channelizer_0, '2', qtgui_freq_sink_x_0, '2']
+- [wifigpu_gpu_channelizer_0, '3', blocks_null_sink_0_1, '0']
 - [wifigpu_gpu_channelizer_0, '3', qtgui_freq_sink_x_0, '3']
 
 metadata:

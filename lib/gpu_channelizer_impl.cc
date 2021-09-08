@@ -59,6 +59,7 @@ gpu_channelizer_impl::gpu_channelizer_impl(size_t nchans,
   p_deinterleaver->set_stream(d_stream);
   // set_output_multiple(nchans);
   // set_min_noutput_items(d_overlap+1024);
+  set_history(d_overlap);
 }
 
 /*
@@ -69,7 +70,10 @@ gpu_channelizer_impl::~gpu_channelizer_impl() {}
 void gpu_channelizer_impl::forecast(int noutput_items,
                                     gr_vector_int &ninput_items_required) {
 
-  ninput_items_required[0] = noutput_items * d_nchans + d_overlap;
+  // ninput_items_required[0] = noutput_items * d_nchans + d_overlap;
+  ninput_items_required[0] = noutput_items * d_nchans;
+
+  // std::cout << "forecast: " << noutput_items << " / " << ninput_items_required[0] << std::endl;
 }
 
 int gpu_channelizer_impl::general_work(int noutput_items,
@@ -78,6 +82,7 @@ int gpu_channelizer_impl::general_work(int noutput_items,
                                        gr_vector_void_star &output_items) {
   const input_type *in = reinterpret_cast<const input_type *>(input_items[0]);
   output_type *out = reinterpret_cast<output_type *>(output_items[0]);
+
 
   // checkCudaErrors(p_channelizer->launch_default_occupancy(input_items,
   // output_items,
@@ -121,6 +126,8 @@ int gpu_channelizer_impl::general_work(int noutput_items,
   cudaStreamSynchronize(d_stream);
 
   consume_each(noutput_items * d_nchans);
+
+  // std::cout << "noutput: " << noutput_items << std::endl;
 
   // Tell runtime system how many output items we produced.
   return noutput_items;
