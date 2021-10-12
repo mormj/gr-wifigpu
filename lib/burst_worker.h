@@ -74,11 +74,6 @@ private:
       }
     }
 
-      //       FILE *pFile;
-      //       pFile = fopen("/tmp/gr_rx_bits.dat", "wb");
-      //       fwrite(rx_bits, 1, frame_info.n_sym * 48 , pFile);
-			// fclose(pFile);
-
     deinterleave(rx_bits, deinterleaved_bits, frame_info.n_sym, ofdm_info);
     uint8_t *decoded =
         decoder.decode(&ofdm_info, &frame_info, deinterleaved_bits);
@@ -105,12 +100,6 @@ private:
     mylog(boost::format("encoding: %1% - length: %2% - symbols: %3%") %
           ofdm_info.encoding % frame_info.psdu_size % frame_info.n_sym);
 
-    // // create PDU
-    // pmt::pmt_t blob = pmt::make_blob(out_bytes + 2, frame_info.psdu_size -
-    // 4); d_meta = pmt::dict_add(d_meta, pmt::mp("dlt"),
-    //                        pmt::from_long(LINKTYPE_IEEE802_11));
-
-    // message_port_pub(pmt::mp("out"), pmt::cons(d_meta, blob));
   }
 
   void deinterleave(uint8_t *rx_bits, uint8_t *deinterleaved_bits, size_t n_sym,
@@ -254,104 +243,6 @@ private:
 
     volatile int x = 7;
   }
-
-  // bool decode_signal_field(uint8_t *rx_bits) {
-
-  //   static ofdm_param ofdm(BPSK_1_2);
-  //   static frame_param frame(&ofdm, 0);
-
-  //   deinterleave_signal(rx_bits);
-  //   uint8_t *decoded_bits = d_decoder.decode(&ofdm, &frame, d_deinterleaved);
-
-  //   return parse_signal(decoded_bits);
-  // }
-
-  // void deinterleave_signal(uint8_t *rx_bits) {
-  //   for (int i = 0; i < 48; i++) {
-  //     d_deinterleaved[i] = rx_bits[interleaver_pattern[i]];
-  //   }
-  // }
-
-  // bool parse_signal(uint8_t *decoded_bits) {
-
-  //   int r = 0;
-  //   d_frame_bytes = 0;
-  //   bool parity = false;
-  //   for (int i = 0; i < 17; i++) {
-  //     parity ^= decoded_bits[i];
-
-  //     if ((i < 4) && decoded_bits[i]) {
-  //       r = r | (1 << i);
-  //     }
-
-  //     if (decoded_bits[i] && (i > 4) && (i < 17)) {
-  //       d_frame_bytes = d_frame_bytes | (1 << (i - 5));
-  //     }
-  //   }
-
-  //   if (parity != decoded_bits[17]) {
-  //     dout << "SIGNAL: wrong parity" << std::endl;
-  //     return false;
-  //   }
-
-  //   switch (r) {
-  //   case 11:
-  //     d_frame_encoding = 0;
-  //     d_frame_symbols = (int)ceil((16 + 8 * d_frame_bytes + 6) / (double)24);
-  //     d_frame_mod = d_bpsk;
-  //     // dout << "Encoding: 3 Mbit/s   ";
-  //     break;
-  //   case 15:
-  //     d_frame_encoding = 1;
-  //     d_frame_symbols = (int)ceil((16 + 8 * d_frame_bytes + 6) / (double)36);
-  //     d_frame_mod = d_bpsk;
-  //     // dout << "Encoding: 4.5 Mbit/s   ";
-  //     break;
-  //   case 10:
-  //     d_frame_encoding = 2;
-  //     d_frame_symbols = (int)ceil((16 + 8 * d_frame_bytes + 6) / (double)48);
-  //     d_frame_mod = d_qpsk;
-  //     // dout << "Encoding: 6 Mbit/s   ";
-  //     break;
-  //   case 14:
-  //     d_frame_encoding = 3;
-  //     d_frame_symbols = (int)ceil((16 + 8 * d_frame_bytes + 6) / (double)72);
-  //     d_frame_mod = d_qpsk;
-  //     // dout << "Encoding: 9 Mbit/s   ";
-  //     break;
-  //   case 9:
-  //     d_frame_encoding = 4;
-  //     d_frame_symbols = (int)ceil((16 + 8 * d_frame_bytes + 6) / (double)96);
-  //     d_frame_mod = d_16qam;
-  //     // dout << "Encoding: 12 Mbit/s   ";
-  //     break;
-  //   case 13:
-  //     d_frame_encoding = 5;
-  //     d_frame_symbols = (int)ceil((16 + 8 * d_frame_bytes + 6) /
-  //     (double)144); d_frame_mod = d_16qam;
-  //     // dout << "Encoding: 18 Mbit/s   ";
-  //     break;
-  //   case 8:
-  //     d_frame_encoding = 6;
-  //     d_frame_symbols = (int)ceil((16 + 8 * d_frame_bytes + 6) /
-  //     (double)192); d_frame_mod = d_64qam;
-  //     // dout << "Encoding: 24 Mbit/s   ";
-  //     break;
-  //   case 12:
-  //     d_frame_encoding = 7;
-  //     d_frame_symbols = (int)ceil((16 + 8 * d_frame_bytes + 6) /
-  //     (double)216); d_frame_mod = d_64qam;
-  //     // dout << "Encoding: 27 Mbit/s   ";
-  //     break;
-  //   default:
-  //     // dout << "unknown encoding" << std::endl;
-  //     return false;
-  //   }
-
-  //   // mylog(boost::format("encoding: %1% - length: %2% - symbols: %3%") %
-  //   //       d_frame_encoding % d_frame_bytes % d_frame_symbols);
-  //   return true;
-  // }
 
 public:
 int crc_cnt = 0;

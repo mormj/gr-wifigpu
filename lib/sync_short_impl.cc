@@ -23,12 +23,13 @@
 #endif
 
 #include "sync_short_impl.h"
-#include <gnuradio/io_signature.h>
 #include <cuda_buffer/cuda_buffer.h>
+#include <gnuradio/io_signature.h>
 
-extern void exec_freq_correction(cuFloatComplex *in, cuFloatComplex *out, float freq_offset,
-                          float start_idx, int n, int grid_size, int block_size,
-                          cudaStream_t stream);
+extern void exec_freq_correction(cuFloatComplex *in, cuFloatComplex *out,
+                                 float freq_offset, float start_idx, int n,
+                                 int grid_size, int block_size,
+                                 cudaStream_t stream);
 extern void get_block_and_grid_freq_correction(int *minGrid, int *minBlock);
 
 namespace gr {
@@ -49,11 +50,13 @@ void sync_short_impl::forecast(int noutput_items,
  * Custom Buffers
  */
 sync_short_impl::sync_short_impl(float threshold, int min_plateau)
-    : gr::block("sync_short",
-                gr::io_signature::make3(3, 3, sizeof(gr_complex),
-                                        sizeof(gr_complex), sizeof(float), cuda_buffer::type, cuda_buffer::type, cuda_buffer::type),
-                gr::io_signature::make3(1, 3, sizeof(gr_complex),
-                                        sizeof(uint8_t), sizeof(uint8_t), cuda_buffer::type)),
+    : gr::block(
+          "sync_short",
+          gr::io_signature::make3(3, 3, sizeof(gr_complex), sizeof(gr_complex),
+                                  sizeof(float), cuda_buffer::type,
+                                  cuda_buffer::type, cuda_buffer::type),
+          gr::io_signature::make3(1, 3, sizeof(gr_complex), sizeof(uint8_t),
+                                  sizeof(uint8_t), cuda_buffer::type)),
       d_threshold(threshold), d_min_plateau(min_plateau) {
   set_history(d_min_plateau);
 
@@ -73,7 +76,7 @@ sync_short_impl::sync_short_impl(float threshold, int min_plateau)
   std::cerr << "minGrid: " << d_min_grid_size << ", blockSize: " << d_block_size
             << std::endl;
 
-  cudaStreamCreate(&d_stream);    
+  cudaStreamCreate(&d_stream);
 }
 
 int sync_short_impl::general_work(int noutput_items,
@@ -88,27 +91,22 @@ int sync_short_impl::general_work(int noutput_items,
   // uint8_t *out_accum = (uint8_t *)output_items[2];
 
   int h = history() - 1;
-  if (noutput_items+h > above_threshold.size()) {
+  if (noutput_items + h > above_threshold.size()) {
     above_threshold.resize(noutput_items + h);
     accum.resize(noutput_items);
-       std::cout << "resizing to " << noutput_items+h << std::endl;
-        d_host_cor.resize(noutput_items+h);
-        d_host_abs.resize(noutput_items+h);
+    std::cout << "resizing to " << noutput_items + h << std::endl;
+    d_host_cor.resize(noutput_items + h);
+    d_host_abs.resize(noutput_items + h);
   }
 
-    // Copy D2H in_cor to host
-    checkCudaErrors(cudaMemcpyAsync(d_host_cor.data(),
-                                    in_cor,
-                                    sizeof(float) * (noutput_items+h),
-                                    cudaMemcpyDeviceToHost,
-                                    d_stream));
-    checkCudaErrors(cudaMemcpyAsync(d_host_abs.data(),
-                                    in_abs,
-                                    sizeof(gr_complex) * (noutput_items+h),
-                                    cudaMemcpyDeviceToHost,
-                                    d_stream));
-    cudaStreamSynchronize(d_stream);
-
+  // Copy D2H in_cor to host
+  checkCudaErrors(cudaMemcpyAsync(d_host_cor.data(), in_cor,
+                                  sizeof(float) * (noutput_items + h),
+                                  cudaMemcpyDeviceToHost, d_stream));
+  checkCudaErrors(cudaMemcpyAsync(d_host_abs.data(), in_abs,
+                                  sizeof(gr_complex) * (noutput_items + h),
+                                  cudaMemcpyDeviceToHost, d_stream));
+  cudaStreamSynchronize(d_stream);
 
   for (int i = 0; i < noutput_items + h; i++) {
     above_threshold[i] = d_host_cor[i] > d_threshold;
@@ -136,8 +134,7 @@ int sync_short_impl::general_work(int noutput_items,
         d_freq_offset = arg(d_host_abs[i]) / 16;
         insert_tag(nwritten + i, d_freq_offset, nread + i);
         packet_cnt++;
-        if (packet_cnt % 1000 == 0)
-        {
+        if (packet_cnt % 1000 == 0) {
           std::cout << "sync_short: " << packet_cnt << std::endl;
         }
       }
@@ -147,30 +144,12 @@ int sync_short_impl::general_work(int noutput_items,
     }
   }
 
-  // std::cout << noutput_items << std::endl;
-
-  // checkCudaErrors(cudaMemcpyAsync(d_dev_in, in + h,
-  //                                 sizeof(gr_complex) * (noutput_items),
-  //                                 cudaMemcpyHostToDevice, d_stream));
-
-  // for (int o = 0; o < noutput_items; o++) {
-  //   out[o] = in[o + h] * exp(gr_complex(0, -d_freq_offset * (nwritten + o)));
-  // }
-
   auto gridSize = (noutput_items + d_block_size - 1) / d_block_size;
-  exec_freq_correction((cuFloatComplex *)(in+h), (cuFloatComplex *)out, d_freq_offset,
-                          nwritten, noutput_items, gridSize, d_block_size,
-                          d_stream);
-
-  // checkCudaErrors(cudaMemcpyAsync(out, d_dev_out,
-  //                                 sizeof(gr_complex) * (noutput_items),
-  //                                 cudaMemcpyDeviceToHost, d_stream));
+  exec_freq_correction((cuFloatComplex *)(in + h), (cuFloatComplex *)out,
+                       d_freq_offset, nwritten, noutput_items, gridSize,
+                       d_block_size, d_stream);
 
   cudaStreamSynchronize(d_stream);
-
-
-  // memcpy(out_plateau, above_threshold.data(), noutput_items);
-  // memcpy(out_accum, accum.data(), noutput_items);
 
   // Tell runtime system how many input items we consumed on
   // each input stream.
@@ -206,7 +185,7 @@ sync_short_impl::sync_short_impl(float threshold, int min_plateau)
   std::cerr << "minGrid: " << d_min_grid_size << ", blockSize: " << d_block_size
             << std::endl;
 
-  cudaStreamCreate(&d_stream);    
+  cudaStreamCreate(&d_stream);
 }
 
 int sync_short_impl::general_work(int noutput_items,
@@ -270,16 +249,14 @@ int sync_short_impl::general_work(int noutput_items,
   // }
 
   auto gridSize = (noutput_items + d_block_size - 1) / d_block_size;
-  exec_freq_correction(d_dev_in, d_dev_out, d_freq_offset,
-                          nwritten, noutput_items, gridSize, d_block_size,
-                          d_stream);
+  exec_freq_correction(d_dev_in, d_dev_out, d_freq_offset, nwritten,
+                       noutput_items, gridSize, d_block_size, d_stream);
 
   checkCudaErrors(cudaMemcpyAsync(out, d_dev_out,
                                   sizeof(gr_complex) * (noutput_items),
                                   cudaMemcpyDeviceToHost, d_stream));
 
   cudaStreamSynchronize(d_stream);
-
 
   // memcpy(out_plateau, above_threshold.data(), noutput_items);
   // memcpy(out_accum, accum.data(), noutput_items);

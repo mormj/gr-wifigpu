@@ -60,8 +60,6 @@ sync_long_impl::sync_long_impl(unsigned int sync_length)
           gr::io_signature::make(1, 1, sizeof(gr_complex))),
 #endif
       d_sync_length(sync_length) {
-  // set_output_multiple(d_fftsize); // make sure the fft size is sufficient for
-  //                                 // freq domain convolution
 
   cudaStreamCreate(&d_stream);
 
@@ -206,9 +204,6 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
         o += 64;
       }
 
-      // FILE *pFile;
-      // pFile = fopen("/tmp/gr_sync_long.fc32", "wb");
-      // fwrite(out, sizeof(gr_complex), o, pFile);
       nconsumed += i;
       nproduced += o;
 #endif
@@ -256,10 +251,6 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
           float max_value = 0.0;
           for (size_t i = 0; i < host_data.size(); i++) {
             abs_corr[i] = std::abs(host_data[i]);
-            // std::cout << abs_corr[i];
-            // if (i < host_data.size()-1)
-            // std::cout << ",";
-
             if (abs_corr[i] > max_value) {
               max_value = abs_corr[i];
               max_index = i;
@@ -275,8 +266,6 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
             copy_index = max_index - 160 + 32 + 1;
           }
 
-          // std::cout << max_index << " / " << nread << " / " << offset << " / "
-          //           << (offset - nread + copy_index) << std::endl;
 
 #if USE_CUSTOM_BUFFERS
 
@@ -294,8 +283,6 @@ int sync_long_impl::general_work(int noutput_items, gr_vector_int &ninput_items,
               pmt::from_double(d_freq_offset_short - d_freq_offset);
           const pmt::pmt_t srcid = pmt::string_to_symbol(name());
           add_item_tag(0, nwritten + nproduced, key, value, srcid);
-
-          // std::cout << "adding tag at " << (nwritten + nproduced) / 64 << std::endl;
 
           d_num_syms = 0;
           d_state = FINISH_LAST_FRAME;

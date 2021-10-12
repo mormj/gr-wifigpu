@@ -415,7 +415,7 @@ blocks:
     alias: ''
     begin_tag: pmt.PMT_NIL
     comment: ''
-    file: /data/data/cropcircles/wifi_synth_36_1kpad_20MHz_10s_MCS0.fc32
+    file: /data/data/cropcircles/wifi_capt_2462_20MHz.fc32
     length: '0'
     maxoutbuf: '0'
     minoutbuf: 1024*1024
