@@ -3,3 +3,4 @@ examples/*.py
 **/.vscode/
 perf.data*
 **/__pycache__/
+flamegraph.svg
